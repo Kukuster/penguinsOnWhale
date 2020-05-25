@@ -1,0 +1,1581 @@
+#!/usr/bin/env bash
+
+
+#########################################################################################
+#                   /                                               \                   #
+#==================|                    INSTALLATOR                  |==================#
+#                   \                                               /                   #
+#########################################################################################
+
+
+############################################
+#==========================================#
+#       PROGRAM HEAD (declarations)        #
+#==========================================#
+############################################
+
+#=#=#=#=#= variables =#=#=#=#=#
+
+declare -r programname="penguinsOnWhale"
+declare -r version="1.0"
+declare -r revision="2020.05.25"
+declare -r source="https://github.com/Kukuster/penguinsOnWhale"
+
+program_user="$(stat -c '%U' "$0")"
+program_group="$(stat -c '%G' "$0")"
+running_user="$USER"
+
+
+# ----- exit codes -----
+declare -A ExitCode=()
+ExitCode[installationerror]=1
+
+
+# ----- formatting -----
+#https://misc.flogisoft.com/bash/tip_colors_and_formatting
+declare -r format_end='\e[0m'
+
+declare -r b='\e[1m'
+declare -r b_end='\e[21m'
+declare -r dim='\e[2m'
+declare -r dim_end='\e[22m'
+declare -r u='\e[4m'
+declare -r u_end='\e[24m'
+declare -r blink='\e[5m'
+declare -r blink_end='\e[25m'
+
+declare -r color_end='\e[39m'
+declare -r black='\e[39m'
+declare -r red='\e[31m'
+declare -r green='\e[32m'
+declare -r yellow='\e[33m'
+declare -r blue='\e[34m'
+declare -r magenta='\e[35m'
+declare -r cyan='\e[36m'
+declare -r lightgray='\e[37m'
+declare -r darkgray='\e[90m'
+declare -r lightred='\e[91m'
+declare -r lightgreen='\e[92m'
+declare -r lightyellow='\e[93m'
+declare -r lightblue='\e[94m'
+declare -r lightmagenta='\e[95m'
+declare -r lightcyan='\e[96m'
+declare -r lightwhite='\e[97m'
+
+declare -r quote_str="${b}${dim}<<${dim_end}${format_end}"
+declare -r unquote_str="${b}${dim}>>${dim_end}${format_end}"
+
+declare -r ERROR="${b}${red}ERROR${color_end}${format_end}"
+declare -r WARNING="${b}${yellow}WARNING${color_end}${format_end}"
+
+
+
+
+#=#=#=#=#= Program Files =#=#=#=#=#
+declare -A ProgramFiles=()
+declare -A ProgramFiles_owners=()
+declare -A ProgramFiles_permissions=()
+declare -A ProgramFiles_contents=()
+
+
+# ----- installator -----
+ProgramFiles[installator]="/opt/${programname}/installator.sh"
+ProgramFiles_owners[installator]="${program_user}:${program_group}"
+ProgramFiles_permissions[installator]=754
+read -r -d '' ProgramFiles_contents[installator] < "$0"
+
+
+# ----- APP -----
+program_begin_match="### app start ###
+"
+program_end_match="
+### app end ###"
+install_contents="`cat "$0"`"
+program_contents=${install_contents##*$program_begin_match}
+program_contents=${program_contents%%$program_end_match*}
+
+ProgramFiles[penguinsOnWhale]="/usr/local/bin/${programname}"
+ProgramFiles_owners[penguinsOnWhale]="${program_user}:${program_group}"
+ProgramFiles_permissions[penguinsOnWhale]=754
+ProgramFiles_contents[penguinsOnWhale]="$program_contents"
+
+
+# ----- autocompletion -----
+ProgramFiles[autocompletion]="/etc/bash_completion.d/${programname}"
+ProgramFiles_owners[autocompletion]="${running_user}:${running_user}"
+ProgramFiles_permissions[autocompletion]=644
+read -r -d '' ProgramFiles_contents[autocompletion] << EOF
+program="$programname"
+_complete()
+{
+  _complete_commands=\`"\$program" --print-options\` # keys
+
+  local cur
+  COMPREPLY=()
+  cur="\${COMP_WORDS[COMP_CWORD]}"
+  COMPREPLY=( \$(compgen -W "\${_complete_commands}" -- \${cur}) )
+
+  return 0
+}
+complete -o nospace -F _complete "\$program"
+
+EOF
+
+
+# ----- ini_interface -----
+ProgramFiles[ini_interface]="/opt/${programname}/ini_interface.py"
+ProgramFiles_owners[ini_interface]="${program_user}:${program_group}"
+ProgramFiles_permissions[ini_interface]=755
+read -r -d '' ProgramFiles_contents[ini_interface] << EOF
+#python3
+import configparser
+import collections.abc
+
+class IniFileMap(collections.abc.MutableMapping, dict):
+
+    __file = None
+    __parser = None
+    __ancestors = None
+
+    @property
+    def file(self):
+        return self.__file
+
+    @file.setter
+    def file(self, val):
+        if self.__file is not None:
+            raise AttributeError('\'file\' property can be assigned only once for each instance on IniFileMap')
+        else:
+            self.__file = val
+
+    @property
+    def parser(self):
+        return self.__parser
+
+    @parser.setter
+    def parser(self, val):
+        if self.__parser is not None:
+            raise AttributeError('\'parser\' property can be assigned only once for each instance on IniFileMap')
+        elif not isinstance(val, configparser.RawConfigParser):
+            raise TypeError('\'parser\' property must be a configparser.RawConfigParser instance')
+        else:
+            self.__parser = val
+
+    @property
+    def ancestors(self):
+        return self.__ancestors
+
+    @ancestors.setter
+    def ancestors(self, val):
+        if self.__ancestors is not None:
+            raise AttributeError('\'ancestors\' property can be assigned only once for each instance on IniFileMap')
+        elif type(val) is not tuple:
+            raise TypeError('\'ancestors\' property must be a tuple')
+        else:
+            self.__ancestors = val
+
+    def rewrite_file(self):
+        with open(self.file, 'w') as ini_file:
+            self.parser.write(ini_file)
+
+    def __getitem__(self, key):
+        return dict.__getitem__(self, key)
+
+    def __setitem__(self, key, value):
+        if self.ancestors == ():
+            if isinstance(value, IniFileMap) and len(value) == 0:
+                dict.__setitem__(self, key, value)
+            else:
+                try:
+                    _ = (e for e in value)
+                except TypeError:
+                    raise TypeError('trying to assign none-iterable value to IniFileMap section')
+                finally:
+                    self[key] = IniFileMap({})
+                    self[key].ancestors = (key,)
+                    self[key].parser = self.parser
+                    self[key].file = self.file
+                    if not self.parser.has_section(key):
+                        self.parser.add_section(key)
+                    for option_key, option_value in value.items():
+                        self[key][option_key] = option_value
+                        self.parser.set(key, option_key, option_value)
+            self.rewrite_file()
+        elif type(self.ancestors) is tuple and len(self.ancestors) == 1:
+            # self[self.ancestors[0]][key] = value
+            self.parser.set(self.ancestors[0], key, value)
+            dict.__setitem__(self, key, value)
+            self.rewrite_file()
+
+    def __delitem__(self, key):
+        if self.ancestors == ():
+            if self.parser.has_section(key):
+                dict.__delitem__(self, key)  # del self[key]
+                self.parser.remove_section(key)
+                self.rewrite_file()
+            else:
+                dict.__delitem__(self, key)  # del self[key]  # KeyError - trying to delete undefined section
+        elif type(self.ancestors) is tuple and len(self.ancestors) == 1:
+            dict.__delitem__(self, key)  # del self[self.ancestors[0]][key]
+            self.parser.remove_option(self.ancestors[0], key)
+            self.rewrite_file()
+
+    def __iter__(self):
+        return dict.__iter__(self)
+
+    def __len__(self):
+        return dict.__len__(self)
+
+    def __contains__(self, x):
+        return dict.__contains__(self, x)
+
+
+def map_ini_file(str_file_path):
+
+    settings_map = None
+    
+    try:
+        settings = configparser.ConfigParser()
+        settings.read(str_file_path)
+
+        settings_map = IniFileMap({})
+        settings_map.ancestors = ()
+        settings_map.parser = settings
+        settings_map.file = str_file_path
+
+        sections = settings.sections()
+        for section in sections:
+            settings_map[section] = IniFileMap({})
+            settings_map[section].ancestors = (section,)
+            settings_map[section].parser = settings
+            settings_map[section].file = settings_map.file
+
+            options = settings.options(section)
+            for option in options:
+                settings_map[section][option] = settings.get(section, option)
+
+    except IOError:
+        raise IOError('failed to open file ', str_file_path)
+
+    except:
+        return settings_map
+    return settings_map
+
+# usage:
+# Settings = map_ini_file('settings.ini')
+
+EOF
+
+
+# ----- ini_interface_ro -----
+ProgramFiles[ini_interface_ro]="/opt/${programname}/ini_interface_ro.py"
+ProgramFiles_owners[ini_interface_ro]="${program_user}:${program_group}"
+ProgramFiles_permissions[ini_interface_ro]=755
+read -r -d '' ProgramFiles_contents[ini_interface_ro] << EOF
+#python3
+import configparser
+import collections.abc
+
+class IniFileMap(collections.abc.MutableMapping, dict):
+
+    __file = None
+    __parser = None
+    __ancestors = None
+
+    @property
+    def file(self):
+        return self.__file
+
+    @file.setter
+    def file(self, val):
+        if self.__file is not None:
+            raise AttributeError('\'file\' property can be assigned only once for each instance on IniFileMap')
+        else:
+            self.__file = val
+
+    @property
+    def parser(self):
+        return self.__parser
+
+    @parser.setter
+    def parser(self, val):
+        if self.__parser is not None:
+            raise AttributeError('\'parser\' property can be assigned only once for each instance on IniFileMap')
+        elif not isinstance(val, configparser.RawConfigParser):
+            raise TypeError('\'parser\' property must be a configparser.RawConfigParser instance')
+        else:
+            self.__parser = val
+
+    @property
+    def ancestors(self):
+        return self.__ancestors
+
+    @ancestors.setter
+    def ancestors(self, val):
+        if self.__ancestors is not None:
+            raise AttributeError('\'ancestors\' property can be assigned only once for each instance on IniFileMap')
+        elif type(val) is not tuple:
+            raise TypeError('\'ancestors\' property must be a tuple')
+        else:
+            self.__ancestors = val
+
+    def rewrite_file(self):
+        raise SyntaxError("File opened as readonly")
+        with open(self.file, 'w') as ini_file:
+            self.parser.write(ini_file)
+
+    def __getitem__(self, key):
+        return dict.__getitem__(self, key)
+
+    def __setitem__(self, key, value):
+        if self.ancestors == ():
+            if isinstance(value, IniFileMap) and len(value) == 0:
+                dict.__setitem__(self, key, value)
+            else:
+                try:
+                    _ = (e for e in value)
+                except TypeError:
+                    raise TypeError('trying to assign none-iterable value to IniFileMap section')
+                finally:
+                    self[key] = IniFileMap({})
+                    self[key].ancestors = (key,)
+                    self[key].parser = self.parser
+                    self[key].file = self.file
+                    if not self.parser.has_section(key):
+                        self.parser.add_section(key)
+                    for option_key, option_value in value.items():
+                        self[key][option_key] = option_value
+                        self.parser.set(key, option_key, option_value)
+            #self.rewrite_file()
+        elif type(self.ancestors) is tuple and len(self.ancestors) == 1:
+            # self[self.ancestors[0]][key] = value
+            self.parser.set(self.ancestors[0], key, value)
+            dict.__setitem__(self, key, value)
+            #self.rewrite_file()
+
+    def __delitem__(self, key):
+        if self.ancestors == ():
+            if self.parser.has_section(key):
+                dict.__delitem__(self, key)  # del self[key]
+                self.parser.remove_section(key)
+                #self.rewrite_file()
+            else:
+                dict.__delitem__(self, key)  # del self[key]  # KeyError - trying to delete undefined section
+        elif type(self.ancestors) is tuple and len(self.ancestors) == 1:
+            dict.__delitem__(self, key)  # del self[self.ancestors[0]][key]
+            self.parser.remove_option(self.ancestors[0], key)
+            #self.rewrite_file()
+
+    def __iter__(self):
+        return dict.__iter__(self)
+
+    def __len__(self):
+        return dict.__len__(self)
+
+    def __contains__(self, x):
+        return dict.__contains__(self, x)
+
+
+def map_ini_file(str_file_path):
+
+    settings_map = None
+    
+    try:
+        settings = configparser.ConfigParser()
+        settings.read(str_file_path)
+
+        settings_map = IniFileMap({})
+        settings_map.ancestors = ()
+        settings_map.parser = settings
+        settings_map.file = str_file_path
+
+        sections = settings.sections()
+        for section in sections:
+            settings_map[section] = IniFileMap({})
+            settings_map[section].ancestors = (section,)
+            settings_map[section].parser = settings
+            settings_map[section].file = settings_map.file
+
+            options = settings.options(section)
+            for option in options:
+                settings_map[section][option] = settings.get(section, option)
+
+    except IOError:
+        raise IOError('failed to open file ', str_file_path)
+
+    except:
+        return settings_map
+    return settings_map
+
+# usage:
+# Settings = map_ini_file('settings.ini')
+
+EOF
+
+
+# ----- config get sections -----
+ProgramFiles[config_get_sections]="/opt/${programname}/config_get_sections.py"
+ProgramFiles_owners[config_get_sections]="${program_user}:${program_group}"
+ProgramFiles_permissions[config_get_sections]=755
+read -r -d '' ProgramFiles_contents[config_get_sections] << EOF
+import sys
+
+if (not bool(sys.argv) or len(sys.argv) < 3):
+    exit(1)
+
+config_file=sys.argv[1]
+settings_section=sys.argv[2]
+
+ini_interface = '${ProgramFiles[ini_interface_ro]}'
+
+exec(open(ini_interface).read())
+config = map_ini_file(config_file)
+
+if not bool(config):
+    #print('config file is empty')
+    exit(2)
+
+for section in config:
+    if (section == settings_section):
+        continue
+    print(section)
+
+EOF
+
+
+# ----- config get setting -----
+ProgramFiles[config_get_value_from_section]="/opt/${programname}/config_get_value_from_section.py"
+ProgramFiles_owners[config_get_value_from_section]="${program_user}:${program_group}"
+ProgramFiles_permissions[config_get_value_from_section]=755
+read -r -d '' ProgramFiles_contents[config_get_value_from_section] << EOF
+import sys
+
+if (not bool(sys.argv) or len(sys.argv) < 4):
+    exit(1)
+
+config_file=sys.argv[1]
+section=sys.argv[2]
+key=sys.argv[3]
+
+ini_interface = '${ProgramFiles[ini_interface_ro]}'
+
+exec(open(ini_interface).read())
+config = map_ini_file(config_file)
+
+if not bool(config):
+    exit(2)
+
+if not section in config.keys():
+    exit(2)
+
+if not key in config[section].keys():
+    exit(2)
+
+print(config[section][key])
+
+EOF
+
+
+# ----- create config -----
+ProgramFiles[config_create]="/opt/${programname}/config_create.py"
+ProgramFiles_owners[config_create]="${program_user}:${program_group}"
+ProgramFiles_permissions[config_create]=755
+read -r -d '' ProgramFiles_contents[config_create] << EOF
+import sys
+
+if (not bool(sys.argv) or len(sys.argv) < 3):
+    exit(1)
+
+config_file=sys.argv[1]
+settings_section=sys.argv[2]
+
+ini_interface = '${ProgramFiles[ini_interface]}'
+
+exec(open(ini_interface).read())
+config = map_ini_file(config_file)
+
+config[settings_section]={
+    'docker_images_prefix': '',
+    'docker_mount_source': '',
+    'docker_mount_destination': '',
+    'terminal_profile': '${programname}',
+    'cmd': 'ls',
+    'cmd_arg1': '-la'
+}
+
+config['ubuntu18.04']= {'docker_image': 'ubuntu:18.04', 'terminal_name': 'Ubuntu 18.04'}
+config['fedora31']=    {'docker_image': 'fedora:31', 'terminal_name': 'Fedora 31'}
+config['amazonlinux2']={'docker_image': 'amazonlinux:2', 'terminal_name': 'Amazon Linux 2'}
+
+EOF
+
+
+# ----- create full config -----
+ProgramFiles[config_create_full]="/opt/${programname}/config_create_full.py"
+ProgramFiles_owners[config_create_full]="${program_user}:${program_group}"
+ProgramFiles_permissions[config_create_full]=755
+read -r -d '' ProgramFiles_contents[config_create_full] << EOF
+import sys
+
+if (not bool(sys.argv) or len(sys.argv) < 3):
+    exit(1)
+
+config_file=sys.argv[1]
+settings_section=sys.argv[2]
+
+ini_interface = '${ProgramFiles[ini_interface]}'
+
+exec(open(ini_interface).read())
+config = map_ini_file(config_file)
+
+config[settings_section]={
+    'docker_images_prefix': '',
+    'docker_images_suffix': '',
+    'docker_mount_source': '',
+    'docker_mount_destination': '',
+    'terminal_profile': '${programname}',
+    'open_terminal_as_tab': 'True',
+    'cmd': 'ls',
+    'cmd_arg1': '-la',
+    'cmd_arg2': '',
+    'cmd_arg3': 'if an argument is empty, the next ones are not read',
+    'cmd_arg4': '',
+    'cmd_arg5': '',
+    'cmd_arg6': '',
+    'cmd_arg7': 'define as many arguments as you want',
+    'cmd_arg8': '',
+    'cmd_arg9': '',
+    'cmd_arg10': '',
+    'cmd_arg11': 'and so on'
+}
+
+config['ubuntu18.04']= {'docker_image': 'ubuntu:18.04', 'terminal_name': 'Ubuntu 18.04'}
+config['fedora31']=    {'docker_image': 'fedora:31', 'terminal_name': 'Fedora 31'}
+config['amazonlinux2']={'docker_image': 'amazonlinux:2', 'terminal_name': 'Amazon Linux 2'}
+
+EOF
+
+
+
+
+#=#=#=#=#= functions =#=#=#=#=#
+
+# removes all the garbage before finishing the program
+destruct(){
+    :
+    #rm "$tmpfile"
+}
+
+exit_(){
+    #$1 has to be an integer
+    destruct
+    exit "$1"
+}
+
+
+# ----- formatted output -----
+
+# outputs dim opening quote
+quote(){
+    echo -e "$quote_str"
+}
+
+# outputs dim closing quote
+unquote(){
+    echo -e "        $unquote_str"
+}
+
+# outputs dim vertical ellipsis
+ellipsis(){
+    echo -e "    ${b}${dim}."
+    echo -e "    ."
+    echo -e "    .${dim_end}${format_end}"
+}
+
+# trims the given output ($1) in terms of lines
+trim_output(){
+    #$1 - string
+    #$2 - max allowed number of lines
+    #$3 - number of lines to trim to, if max ($2) is exceeded
+    lines=`echo "$1" | wc -l`
+    if [ $lines -gt $2 ]; then
+        echo -e "$1" | head -n $3
+        echo -e "    ${b}${dim}."
+        echo -e "    ."
+        echo -e "    .${dim_end}${format_end}"
+    else
+        echo -e "$1"
+    fi
+}
+
+
+# ----- reusable -----
+
+#echoes number of characters of the longest argument passed to the function
+max(){
+    #$@ - any strings of characters
+    declare args=("$@")
+    n=0
+    for a in "${args[@]}"; do
+        if [[ ${#a} -gt $n ]]; then
+            n=${#a}
+        fi
+    done
+    echo "$n"
+}
+
+Nspaces(){
+    #$1 - number of spaces
+    local -i n=$1
+    local -i i=0
+    local spaces=""
+    while :; do
+        spaces="$spaces "
+        i=$((i+1))
+        if [[ $i -gt $n ]]; then
+            break
+        fi
+    done
+    echo "$spaces"
+}
+
+#asks user with a given text in "$1", returns 0 if user agreed and 1 if disagreed
+areyousure(){
+    #$1 - text to ask
+    #$2 - default answer (may be "yes", "no", or requires answer explicitly if "")
+    
+    local text="$1"
+    local options=""
+    local -i default=0
+    case "$2" in
+        [Yy]* ) options="[Y]/n"; default=0 ;;
+        [Nn]* ) options="y/[N]"; default=1 ;;
+        * ) options="y/n" ;;
+    esac
+
+    while :; do
+        printf "$1 $options"
+        read -p " " yn
+        case $yn in
+            "" ) if [[ ! -z $default ]]; then return $default; fi ;;
+            [Yy]* ) return 0 ;;
+            [Nn]* ) return 1 ;;
+            * ) echo "Wat? Please answer yes or no :/" ;;
+        esac
+    done
+
+#returns 0 if yes, 1 in no
+}
+#example:
+#areyousure "Are you sure?" yes
+
+
+#checks if a string variable contains any delimiters from defined in $IFS
+hasdelimiters(){
+    #$1 - string
+    #$2 - cutsom $IFS instead of global (optional)
+
+    local IFS="$IFS"
+    if [[ ! -z "$2" ]]; then
+        IFS="$2"
+    fi
+
+    local char=""
+    for (( i=0; i<${#IFS}; i++ )); do
+        char="${IFS:$i:1}"
+        if [[ "$1" == *"$char"* ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+
+#returns 0 if a given string contains delimiters
+#returns 1 if it doesn't
+}
+#example:
+#hasdelimiters "$0"
+#[[ $? -eq 0 ]] && p="\"$0\"" || p="$0"
+
+
+#echoes given string "$1" adjusted by length "$2" (trimmed, or appended spaces)
+adjusttolen(){
+    #$1 - string
+    #$2 - length (has to be integer)
+
+    local str_len="${#1}"
+    local -i length=$2
+    if [[ $str_len -gt $length ]]; then
+        echo "${1::length}"
+        return 0
+    else
+        echo "${1}`Nspaces $((length-str_len))`"
+        return 0
+    fi
+
+}
+#example:
+#adjusttolen "$string" 10
+
+
+
+# ----- core -----
+
+#echoes owner user of a given file/directory or an empty string if no such file or directory
+get_owneruser(){
+    #$1 - path to file or directory    
+    echo "$(stat -c %U "$1" 2>/dev/null)"
+}
+
+#echoes owner group of a given file/directory or an empty string if no such file or directory
+get_ownergroup(){
+    #$1 - path to file or directory
+    echo "$(stat -c %G "$1" 2>/dev/null)"
+}
+
+#echoes permissions [ddd] of a given file/directory or an empty string if no such file or directory
+get_permissions(){
+    #$1 - path to file or directory
+    echo "$(stat -c %a "$1" 2>/dev/null)"
+}
+
+
+#checks if file on the path exists, can be read, written, and executed
+check_file_permissions(){
+    #$1 - file key (identifies entries in ProgramFiles and ProgramFiles_contents hash tables)
+    #echoes empty string if file doesn't exist or permissions in "[ppp]"
+    :
+
+}
+
+#TODO: encapsulate creation of files to the function with checks for permissions and all the stuff, with response if case of problems
+create_file(){
+    :
+}
+
+install(){
+    #$1 - key ("-f" or "--force")
+    
+    local -i max_PF_o=`max "${ProgramFiles_owners[@]}"` #maximum number of characters
+    local owners=""
+    local -i length=0
+
+    echo -e "#=#=#=#=# ${b}$programname installation${b_end}${format_end} #=#=#=#=#"
+    echo -e ""
+    echo -e "During the installation following files will be created/rewritten:"
+    echo -e ""
+    for file in "${!ProgramFiles[@]}"; do
+        owners="${ProgramFiles_owners[$file]}"
+        echo -e "${dim}${ProgramFiles_permissions[$file]} $(adjusttolen "$owners" $max_PF_o)${dim_end}${format_end} \"${ProgramFiles[$file]}\""
+    done
+    echo -e ""
+
+    if [[ "$1" == "-f" ]] || [[ "$1" == "--force" ]]; then
+        : #proceed automatically without prompt
+    else
+        areyousure "Do you want to install $programname?" yes
+        [[ $? -eq 0 ]] && : || return 1
+        echo -e ""
+        #echo "Do you want to install $programname?"
+        # select yn in "Yes" "No"; do
+        #     case $yn in
+        #         Yes ) break;;
+        #         No ) return 1;;
+        #     esac
+        # done
+    fi
+
+    for file in "${!ProgramFiles[@]}"; do
+        filepath="${ProgramFiles[$file]}"
+        dir="`dirname "${ProgramFiles[$file]}"`"
+
+        mkdir -p "$dir" 2>/dev/null
+        if [[ ! -d "$dir" ]]; then
+            echo "ERROR: permission denied creating \"$dir\" directory. Try installing the program as a root"
+            return 2
+        fi
+
+        touch "$filepath" 2>/dev/null
+        ec="$?"
+        if [[ "$ec" -ne 0 || ! -f "$filepath" ]]; then
+            echo "ERROR: permission denied creating \"$filepath\" file. Try installing the program as a root"
+            return 2
+        fi
+        echo "${ProgramFiles_contents[$file]}" > "$filepath"
+        chown -f "${ProgramFiles_owners[$file]}" "$filepath"
+        chmod -f "${ProgramFiles_permissions[$file]}" "$filepath"
+
+        #echo "Successfully created a file: "
+        #ls -la "$filepath"
+
+    done
+
+    ls -la "${ProgramFiles[@]}"
+    echo -e ""
+    echo "installation finished successfuly"
+    return 0
+
+#returns:
+#0 - installation completed normally
+#1 - installation declined
+#2 - error creating directory or one of the ProgramFiles
+}
+
+
+
+
+#=#=#=#=#= interface =#=#=#=#=#
+declare -A InterfaceText=()
+
+hasdelimiters "$0"
+[[ $? -eq 0 ]] && p="\"$0\"" || p="$0"
+
+InterfaceText[default]="${b}$programname v$version${format_end} (${revision})
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY.
+source: $source
+
+You can install the program by executing:
+$quote_str
+$p --install
+    $unquote_str
+
+Or, to install without prompt:
+$quote_str
+$p --install -f
+    $unquote_str
+"
+
+
+
+
+
+
+
+############################################
+#==========================================#
+#               PROGRAM BODY               #
+#==========================================#
+############################################
+
+
+while :; do
+    
+    case "$1" in
+        "" )
+            echo -e "${InterfaceText[default]}"
+            exit_ 0
+            break
+            ;;
+        --install )
+            if [[ "$2" == "-f" ]] || [[ "$2" == "--force" ]]; then
+                install --force
+                ec=$?
+            else
+                install
+                ec=$?
+            fi
+            if [[ $ec -eq 2 ]]; then
+                exit_ ${ExitCode[installationerror]}
+            else
+                exit_ 0
+            fi
+            break
+            ;;
+        *)
+            echo -e "${InterfaceText[default]}"
+            exit_ 0
+            break
+            ;;
+    esac
+
+
+done
+
+
+
+
+exit
+
+
+
+#end_of_install_file
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#########################################################################################
+#                   /                                               \                   #
+#==================|                       APP                       |==================#
+#                   \                                               /                   #
+#########################################################################################
+### app start ###
+#!/usr/bin/env bash
+
+
+############################################
+#==========================================#
+#       PROGRAM HEAD (declarations)        #
+#==========================================#
+############################################
+
+#=#=#=#=#= variables =#=#=#=#=#
+
+declare -r programname="penguinsOnWhale"
+declare -r version="1.0"
+declare -r revision="2020.05.25"
+declare -r source="https://github.com/Kukuster/penguinsOnWhale"
+
+
+# ----- dependencies -----
+declare -r python3="python3"
+declare -r docker="docker"
+declare -r terminal="gnome-terminal"
+declare -r config_file="$programname.conf"
+
+
+# ----- config keys and default values -----
+declare -r config_settings_section="Program settings"
+declare -A ConfigKeys=()
+declare -A ConfigKeys_defaultvalue=()
+declare -A ConfigKeysImage=()
+
+ConfigKeys[docker_images_prefix]="docker_images_prefix"
+ConfigKeys_defaultvalue[docker_images_prefix]=""
+
+ConfigKeys[docker_images_suffix]="docker_images_suffix"
+ConfigKeys_defaultvalue[docker_images_suffix]=""
+
+ConfigKeys[terminal_profile]="terminal_profile"
+ConfigKeys_defaultvalue[terminal_profile]="$programname"
+
+ConfigKeys[tab]="open_terminal_as_tab"
+ConfigKeys_defaultvalue[tab]="True"
+
+ConfigKeys[docker_mount_source]="docker_mount_source"
+ConfigKeys_defaultvalue[docker_mount_source]=""
+
+ConfigKeys[docker_mount_destination]="docker_mount_destination"
+ConfigKeys_defaultvalue[docker_mount_destination]=""
+
+ConfigKeys[cmd]="cmd"
+ConfigKeys_defaultvalue[cmd]=""
+
+ConfigKeys[cmd_arg]="cmd_arg"
+ConfigKeys_defaultvalue_cmd_arg=()
+
+
+ConfigKeysImage[docker_image]="docker_image"
+ConfigKeysImage[terminal_name]="terminal_name"
+
+
+
+# ----- exit codes -----
+declare -A ExitCode=()
+ExitCode[noconf]=1
+ExitCode[noprogramfiles]=2
+ExitCode[noimages]=3
+ExitCode[cannotresolveimage]=4
+ExitCode[failedtocreateconfig]=5
+ExitCode[failedtoreinstall]=6
+
+
+# ----- program files -----
+declare -A ProgramFiles=()
+ProgramFiles[installator]="/opt/${programname}/installator.sh"
+ProgramFiles[penguinsOnWhale]="/usr/local/bin/${programname}"
+ProgramFiles[autocompletion]="/etc/bash_completion.d/${programname}"
+ProgramFiles[ini_interface]="/opt/${programname}/ini_interface.py"
+ProgramFiles[ini_interface_ro]="/opt/${programname}/ini_interface_ro.py"
+ProgramFiles[config_get_sections]="/opt/${programname}/config_get_sections.py"
+ProgramFiles[config_get_value_from_section]="/opt/${programname}/config_get_value_from_section.py"
+ProgramFiles[config_create]="/opt/${programname}/config_create.py"
+ProgramFiles[config_create_full]="/opt/${programname}/config_create_full.py"
+
+
+# ----- program options (arguments) -----
+declare -A ProgramOptions=()
+declare -A ProgramOptions_description=()
+
+ProgramOptions[help]="--help"
+ProgramOptions_description[help]="displays this message"
+
+ProgramOptions[version]="--version"
+ProgramOptions_description[version]="displays general info about the program"
+
+ProgramOptions[reinstall]="--reinstall"
+ProgramOptions_description[reinstall]="runs \"${ProgramFiles[installator]}\" script"
+
+ProgramOptions[all]="--all"
+ProgramOptions_description[all]="runs all images defined in the config file as per configuration"
+
+ProgramOptions[createconfig]="--create-config"
+ProgramOptions_description[createconfig]="creates new config file"
+
+ProgramOptions[createconfigfull]="--create-config-full"
+ProgramOptions_description[createconfigfull]="creates new config file with all possible configs specified"
+
+ProgramOptions[printoptions]="--print-options"
+ProgramOptions_description[printoptions]=""
+
+ProgramOptions[here]="--here"
+ProgramOptions_description[here]=""
+
+
+# ----- formatting -----
+#https://misc.flogisoft.com/bash/tip_colors_and_formatting
+declare -r format_end='\e[0m'
+
+declare -r b='\e[1m'
+declare -r b_end='\e[21m'
+declare -r dim='\e[2m'
+declare -r dim_end='\e[22m'
+declare -r u='\e[4m'
+declare -r u_end='\e[24m'
+declare -r blink='\e[5m'
+declare -r blink_end='\e[25m'
+
+declare -r color_end='\e[39m'
+declare -r black='\e[39m'
+declare -r red='\e[31m'
+declare -r green='\e[32m'
+declare -r yellow='\e[33m'
+declare -r blue='\e[34m'
+declare -r magenta='\e[35m'
+declare -r cyan='\e[36m'
+declare -r lightgray='\e[37m'
+declare -r darkgray='\e[90m'
+declare -r lightred='\e[91m'
+declare -r lightgreen='\e[92m'
+declare -r lightyellow='\e[93m'
+declare -r lightblue='\e[94m'
+declare -r lightmagenta='\e[95m'
+declare -r lightcyan='\e[96m'
+declare -r lightwhite='\e[97m'
+
+declare -r quote_str="${b}${dim}<<${dim_end}${format_end}"
+declare -r unquote_str="${b}${dim}>>${dim_end}${format_end}"
+
+declare -r ERROR="${b}${red}ERROR${color_end}${format_end}"
+declare -r WARNING="${b}${yellow}WARNING${color_end}${format_end}"
+
+
+
+
+#=#=#=#=#= functions =#=#=#=#=#
+
+# removes all the garbage before finishing the program
+destruct(){
+    :
+    #rm "$tmpfile"
+}
+
+exit_(){
+    #$1 has to be an integer
+    destruct
+    exit "$1"
+}
+
+
+# ----- formatted output -----
+
+# outputs dim opening quote
+quote(){
+    echo -e "$quote_str"
+}
+
+# outputs dim closing quote
+unquote(){
+    echo -e "        $unquote_str"
+}
+
+# outputs dim vertical ellipsis
+ellipsis(){
+    echo -e "    ${b}${dim}."
+    echo -e "    ."
+    echo -e "    .${dim_end}${format_end}"
+}
+
+# trims the given output ($1) in terms of lines
+trim_output(){
+    #$1 - string
+    #$2 - max allowed number of lines
+    #$3 - number of lines to trim to, if max ($2) is exceeded
+    lines=`echo "$1" | wc -l`
+    if [ $lines -gt $2 ]; then
+        echo -e "$1" | head -n $3
+        echo -e "    ${b}${dim}."
+        echo -e "    ."
+        echo -e "    .${dim_end}${format_end}"
+    else
+        echo -e "$1"
+    fi
+}
+
+
+# ----- reusable -----
+
+#echoes number of characters of the longest argument passed to the function
+max(){
+    #$@ - any strings of characters
+    declare args=("$@")
+    n=0
+    for a in "${args[@]}"; do
+        if [[ ${#a} -gt $n ]]; then
+            n=${#a}
+        fi
+    done
+    echo "$n"
+}
+
+Nspaces(){
+    #$1 - number of spaces
+    local -i n=$1
+    local -i i=0
+    local spaces=""
+    while :; do
+        spaces="$spaces "
+        i=$((i+1))
+        if [[ $i -gt $n ]]; then
+            break
+        fi
+    done
+    echo "$spaces"
+}
+
+#asks user with a given text in "$1", returns 0 if user agreed and 1 if disagreed
+areyousure(){
+    #$1 - text to ask
+    #$2 - default answer (may be "yes", "no", or requires answer explicitly if "")
+    
+    local text="$1"
+    local options=""
+    local -i default=0
+    case "$2" in
+        [Yy]* ) options="[Y]/n"; default=0 ;;
+        [Nn]* ) options="y/[N]"; default=1 ;;
+        * ) options="y/n" ;;
+    esac
+
+    while :; do
+        printf "$1 $options"
+        read -p " " yn
+        case $yn in
+            "" ) if [[ ! -z $default ]]; then return $default; fi ;;
+            [Yy]* ) return 0 ;;
+            [Nn]* ) return 1 ;;
+            * ) echo "Wat? Please answer yes or no :/" ;;
+        esac
+    done
+
+#returns 0 if yes, 1 in no
+}
+#example:
+#areyousure "Are you sure?" yes
+
+
+#checks if a string variable contains any delimiters from defined in $IFS
+hasdelimiters(){
+    #$1 - string
+    #$2 - cutsom $IFS instead of global (optional)
+
+    local IFS="$IFS"
+    if [[ ! -z "$2" ]]; then
+        IFS="$2"
+    fi
+
+    local char=""
+    for (( i=0; i<${#IFS}; i++ )); do
+        char="${IFS:$i:1}"
+        if [[ "$1" == *"$char"* ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+
+#returns 0 if a given string contains delimiters
+#returns 1 if it doesn't
+}
+#example:
+#hasdelimiters "$0"
+#[[ $? -eq 0 ]] && p="\"$0\"" || p="$0"
+
+
+#echoes given string "$1" adjusted by length "$2" (trimmed, or appended spaces)
+adjusttolen(){
+    #$1 - string
+    #$2 - length (has to be integer)
+
+    local str_len="${#1}"
+    local -i length=$2
+    if [[ $str_len -gt $length ]]; then
+        echo "${1::length}"
+        return 0
+    else
+        echo "${1}`Nspaces $((length-str_len))`"
+        return 0
+    fi
+
+}
+#example:
+#adjusttolen "$string" 10
+
+
+
+# ----- getters -----
+
+#figures out the programname, in case the app file is renamed/aliased and is different from "$programname" defined here in the file
+get_programname(){
+    local p=""
+    if [[ "`which "$programname"`" == "`which "$0"`" ]] || [[ "`which "$programname"`" == "$0" ]]; then
+        p="$programname"
+    else
+        p="$0"
+    fi
+    hasdelimiters "$p"
+    [[ $? -eq 0 ]] && p="\"$p\""
+    echo "$p"
+}
+
+
+# ----- core -----
+
+#is meant to be called in global scope of this script (not in a subshell)
+#exits with error if the a given file is missing, providing list of missing ProgramFiles
+#does nothing if file is present
+verify_essential_file(){
+    #$1 - path to a file
+    if [[ -f "$1" ]]; then
+        return 0
+    else
+        declare -A MissingFiles=()
+        declare hasMissingFiles=""
+        for file in "${!ProgramFiles[@]}"; do
+            if [ ! -f "${ProgramFiles["$file"]}" ]; then
+                MissingFiles["$file"]="${ProgramFiles["$file"]}"
+                hasMissingFiles=True
+            fi
+        done
+
+        if [[ ! -z "$hasMissingFiles" ]]; then
+            echo -e "$ERROR: the following essencial program files are missing:"
+            echo -e ""
+            for filepath in "${MissingFiles[@]}"; do
+                echo -e " ${dim}•${dim_end} \"${filepath}\""
+            done
+            echo -e ""
+            
+            p="`get_programname`"
+
+            echo -e "$programname cannot run without those, try reinstalling it:"
+            quote
+            echo -e "$p ${ProgramOptions[reinstall]}"
+            unquote
+            exit_ ${ExitCode[noprogramfiles]}
+        fi
+
+        exit_ ${ExitCode[noprogramfiles]}
+    fi
+}
+
+#is meant to be called in global scope of this script (not in a subshell)
+#exits with error if a config file is missing
+#does nothing if file is present
+verify_config_file(){
+    if [[ -f "$config_file" ]]; then
+        return 0
+    else
+        p="`get_programname`"
+        echo -e "$ERROR: config file is missing"
+        echo -e ""
+        echo -e "You can create a new config file:"
+        quote
+        echo -e "$p ${ProgramOptions[createconfig]}"
+        unquote
+        exit_ ${ExitCode[noconf]}
+
+    fi
+}
+
+
+config_get_sections(){
+    "$python3" "${ProgramFiles[config_get_sections]}" "$config_file" "$config_settings_section"
+}
+
+config_get_setting(){
+    #$1 - setting name (key)
+    #$2 - index (for numerated keys)
+
+    local key="${ConfigKeys["$1"]}"
+    if [[ -z "$key" ]]; then
+        return 1
+    fi
+    
+    local output=`config_get_value_from_section "$config_settings_section" "$key"`
+    
+    if [[ ! -z "$output" ]]; then
+        echo "$output"
+        return 0
+    fi
+
+    output=`config_get_value_from_section "$config_settings_section" "${key}${2}"`
+
+    if [[ ! -z "$output" ]]; then
+        echo "$output"
+        return 0
+    fi
+
+    echo "${ConfigKeys_defaultvalue["$1"]}"
+    
+}
+
+config_get_value_from_section(){
+    #$1 - section name
+    #$2 - key
+    "$python3" "${ProgramFiles[config_get_value_from_section]}"  "$config_file" "$1" "$2"
+}
+
+#creates a full or short template config file with prompts
+#should be called in the global scope (not in a subshell)
+config_create(){
+    #$1 - either equals "full" or doens't matter
+
+    if [[ -f "$config_file" ]]; then
+        areyousure "Do you want to erase your current config file and replace in with a new template?" no
+        [[ $? -eq 0 ]] && : || return 1
+    fi
+    echo "" > "$config_file"
+
+    [[ "$1" == "full" ]] && local filepy="${ProgramFiles[config_create_full]}" || local filepy="${ProgramFiles[config_create]}"
+
+    "$python3" "$filepy" "$config_file" "$config_settings_section"
+    local ec=$?    
+    if [[ $ec -eq 0 ]] && [[ -f "$config_file" ]]; then
+        echo -e "a new config file \"$config_file\" has been generated"
+        return 0
+    else
+        echo -e "$ERROR: something went wrong or a config file \"$config_file\" has not been created"
+        return 1
+    fi
+}
+
+install(){
+    #$@ - keys
+    "${ProgramFiles[installator]}" --install "$@"
+    ec=$?
+    return $ec
+
+}
+
+run_on(){
+    #$1 - docker image (section name in a config file)
+
+    local profile="`config_get_setting terminal_profile`"
+    local tab="`config_get_setting tab`"
+
+    local image="$1"
+
+    local terminal_name="`config_get_value_from_section "$image" ${ConfigKeysImage[terminal_name]}`"
+    if [[ -z "$terminal_name" ]]; then
+        terminal_name="$image"
+    fi
+
+    if [[ -z "$tab" ]] || [[ "$tab" == "True" ]] || [[ "$tab" =~ ^[Yy] ]]; then
+        tab="--tab"
+    else
+        tab="--window"
+    fi
+
+    "$terminal" "$tab" --profile="$profile" --title="$terminal_name" --active -- "$0" --here "$image"
+
+}
+
+#executes in invoked terminal
+CMD(){
+    #$1 - docker image (section name in a config file)
+
+    if [[ -z "$1" ]]; then
+        echo "$programname --here <image>"
+        exit_ ${ExitCode[cannotresolveimage]}
+    fi
+
+    local image="$1"
+    local image_docker="`config_get_value_from_section "$image" ${ConfigKeysImage[docker_image]}`"
+    if [[ -z "$image_docker" ]]; then
+        exit_ ${ExitCode[cannotresolveimage]}
+    fi
+    local prefix="`config_get_setting docker_images_prefix`"
+    local suffix="`config_get_setting docker_images_suffix`"
+    image_docker="${prefix}${image_docker}${suffix}"
+
+    local terminal_name="`config_get_value_from_section "$image" ${ConfigKeysImage[terminal_name]}`"
+    if [[ -z "$terminal_name" ]]; then
+        terminal_name="$image"
+    fi
+
+    local mount_source="`config_get_setting docker_mount_source`"
+    local mount_destination="`config_get_setting docker_mount_destination`"
+    local mount=""
+    if [[ ! -z "$mount_source" ]] && [[ ! -z "$mount_destination" ]]; then
+        mount="--mount type=bind,src=$mount_source,dst=$mount_destination"
+    fi
+
+    local cmd="`config_get_setting cmd`"
+    local args=()
+    if [[ ! -z "$cmd" ]]; then
+        local arg
+        local -i i=0
+        while :; do
+            i=$((i+1))
+            arg="`config_get_setting cmd_arg ${i}`"
+            if [[ -z "$arg" ]]; then
+                break
+            else
+                args+=("$arg")
+            fi
+        done
+    fi
+    
+    "$docker" run -it --hostname "$terminal_name" $mount --rm "$image_docker" "$cmd" "${args[@]}"
+    ec=$?
+    
+    sleep infinity
+    exit_ $?
+
+}
+
+
+
+
+#=#=#=#=#= interface =#=#=#=#=#
+declare -A InterfaceText=()
+
+p="`get_programname`"
+declare -i max_PO=`max "${ProgramOptions[@]}"`
+
+InterfaceText[help]="Usage: $p [--here] <image>
+  or:  $p [OPTION]
+
+Runs a given docker <image> in a new terminal identified by section name in the config file as per configuration.
+When used with --here key, runs in current terminal without invoking new one
+
+ Options:
+"
+for opt in "${!ProgramOptions[@]}"; do
+    if [[ "$opt" == "printoptions" ]] || [[ "$opt" == "here" ]]; then
+        continue
+    fi
+    InterfaceText[help]="${InterfaceText[help]} `adjusttolen "${ProgramOptions["$opt"]}" $max_PO` ${ProgramOptions_description["$opt"]}\n"
+done
+
+
+InterfaceText[version]="${b}$programname v$version${format_end} (${revision})
+source: $source
+
+type for usage information:
+$quote_str
+$p ${ProgramOptions[help]}
+        $unquote_str"
+
+
+
+############################################
+#==========================================#
+#               PROGRAM BODY               #
+#==========================================#
+############################################
+
+
+
+case "$1" in 
+    "" )
+        echo -e "${InterfaceText[version]}"
+        exit_ 0
+        ;;
+    "${ProgramOptions[reinstall]}" )
+        verify_essential_file "${ProgramFiles[installator]}"
+        if [[ "$2" == "-f" ]] || [[ "$2" == "--force" ]]; then
+            "${ProgramFiles[installator]}" --install --force
+            ec=$?
+        else
+            "${ProgramFiles[installator]}" --install
+            ec=$?
+        fi
+        [[ $ec -eq 0 ]] && exit_ 0 || exit_ ${ExitCode[failedtoreinstall]}
+        ;;
+    "${ProgramOptions[here]}")
+        verify_essential_file "${ProgramFiles[ini_interface_ro]}"
+        verify_essential_file "${ProgramFiles[config_get_value_from_section]}"
+        verify_config_file
+        CMD "$2"
+        ;;
+    "${ProgramOptions[all]}")
+        verify_essential_file "${ProgramFiles[ini_interface_ro]}"
+        verify_essential_file "${ProgramFiles[config_get_value_from_section]}"
+        verify_essential_file "${ProgramFiles[config_get_sections]}"
+        verify_config_file
+        OSs=(`config_get_sections`)
+        for name in ${!OSs[@]}; do
+            run_on "${OSs["$name"]}"
+            #sleep 0.3
+        done
+        exit_ 0
+        ;;
+    "${ProgramOptions[printoptions]}")
+        verify_essential_file "${ProgramFiles[ini_interface_ro]}"
+        verify_essential_file "${ProgramFiles[config_get_sections]}"
+        Options=("${ProgramOptions[@]}" `config_get_sections`)
+        echo "${Options[@]}"
+        exit_ 0
+        ;;
+    "${ProgramOptions[createconfig]}")
+        verify_essential_file "${ProgramFiles[ini_interface]}"
+        verify_essential_file "${ProgramFiles[config_create]}"
+        config_create
+        [[ $? -eq 0 ]] && exit_ 0 || exit_ ${ExitCode[failedtocreateconfig]}
+        ;;
+    "${ProgramOptions[createconfigfull]}")
+        verify_essential_file "${ProgramFiles[ini_interface]}"
+        verify_essential_file "${ProgramFiles[config_create_full]}"
+        config_create full
+        [[ $? -eq 0 ]] && exit_ 0 || exit_ ${ExitCode[failedtocreateconfig]}
+        ;;
+    "${ProgramOptions[help]}")
+        echo -e "${InterfaceText[help]}"
+        exit_ 0
+        ;;
+    "${ProgramOptions[version]}")
+        echo -e "${InterfaceText[version]}"
+        exit_ 0
+        ;;
+    *)
+        verify_essential_file "${ProgramFiles[ini_interface_ro]}"
+        verify_essential_file "${ProgramFiles[config_get_value_from_section]}"
+        verify_config_file
+        run_on "$1"
+        exit_ 0
+        ;;
+    
+    
+esac
+
+
+
+
+
+
+### app end ###

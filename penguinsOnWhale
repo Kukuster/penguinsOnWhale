@@ -438,7 +438,7 @@ if not bool(config):
 for section in config:
     if (section == settings_section):
         continue
-    print(section)
+    print(section+"\n")
 
 EOF
 
@@ -1389,7 +1389,7 @@ run_on(){
 
     local image="$1"
 
-    local terminal_name="`config_get_value_from_section "$image" ${ConfigKeysImage[terminal_name]}`"
+    local terminal_name="`config_get_value_from_section "$image" "${ConfigKeysImage[terminal_name]}"`"
     if [[ -z "$terminal_name" ]]; then
         terminal_name="$image"
     fi
@@ -1401,6 +1401,7 @@ run_on(){
     fi
 
     "$terminal" "$tab" --profile="$profile" --title="$terminal_name" --active -- "$0" --here "$image"
+    #echo "\"$terminal\" \"$tab\" --profile=\"$profile\" --title=\"$terminal_name\" --active -- \"$0\" --here \"$image\""
 
 }
 
@@ -1408,32 +1409,37 @@ run_on(){
 CMD(){
     #$1 - docker image (section name in a config file)
 
-    if [[ -z "$1" ]]; then
+    local image="$1"
+
+    # an image (a config section name) has to be specified for this command
+    if [[ -z "$image" ]]; then
         echo "$programname --here <image>"
         exit_ ${ExitCode[cannotresolveimage]}
     fi
-
-    local image="$1"
-    local image_docker="`config_get_value_from_section "$image" ${ConfigKeysImage[docker_image]}`"
+    
+    # figures out actual docker image name from the config
+    local image_docker="`config_get_value_from_section "$image" "${ConfigKeysImage[docker_image]}"`"
     if [[ -z "$image_docker" ]]; then
         exit_ ${ExitCode[cannotresolveimage]}
     fi
     local prefix="`config_get_setting docker_images_prefix`"
     local suffix="`config_get_setting docker_images_suffix`"
     image_docker="${prefix}${image_docker}${suffix}"
-
-    local terminal_name="`config_get_value_from_section "$image" ${ConfigKeysImage[terminal_name]}`"
+    local terminal_name="`config_get_value_from_section "$image" "${ConfigKeysImage[terminal_name]}"`"
     if [[ -z "$terminal_name" ]]; then
         terminal_name="$image"
     fi
 
+    # if mount paths on the host and on a docker image is specified, add "--mount" to "docker run" arguments
     local mount_source="`config_get_setting docker_mount_source`"
     local mount_destination="`config_get_setting docker_mount_destination`"
-    local mount=""
+    local mount=()
     if [[ ! -z "$mount_source" ]] && [[ ! -z "$mount_destination" ]]; then
-        mount="--mount type=bind,src=$mount_source,dst=$mount_destination"
+        mount+=( "--mount" )
+        mount+=( "type=bind,src=$mount_source,dst=$mount_destination" )
     fi
 
+    # get the cmd and args to execute on a docker container
     local cmd="`config_get_setting cmd`"
     local args=()
     if [[ ! -z "$cmd" ]]; then
@@ -1450,11 +1456,11 @@ CMD(){
         done
     fi
     
-    "$docker" run -it --hostname "$terminal_name" $mount --rm "$image_docker" "$cmd" "${args[@]}"
+    "$docker" run -it --hostname "$terminal_name" "${mount[@]}" --rm "$image_docker" "$cmd" "${args[@]}"
     ec=$?
     
     sleep infinity
-    exit_ $?
+    exit_ "$ec"
 
 }
 
@@ -1528,8 +1534,17 @@ case "$1" in
         verify_essential_file "${ProgramFiles[config_get_value_from_section]}"
         verify_essential_file "${ProgramFiles[config_get_sections]}"
         verify_config_file
-        OSs=(`config_get_sections`)
-        for name in ${!OSs[@]}; do
+        
+        declare configSections="`config_get_sections`"
+        declare OSs=()
+        # reads lines from a string variable
+        while IFS= read -r line; do
+            if [[ -n "$line" ]]; then
+                OSs+=( "$line" )
+            fi
+        done <<< "$configSections"
+
+        for name in "${!OSs[@]}"; do
             run_on "${OSs["$name"]}"
             #sleep 0.3
         done

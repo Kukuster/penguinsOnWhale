@@ -18,5 +18,3 @@ I think this should be done in the following way:
 	merge = refs/heads/master
 ```
 
-4. BUG: If a config section name contains spaces, the tab crashes
-

@@ -106,21 +106,107 @@ ProgramFiles_owners[autocompletion]="${running_user}:${running_user}"
 ProgramFiles_permissions[autocompletion]=644
 read -r -d '' ProgramFiles_contents[autocompletion] << EOF
 program="$programname"
+
+#checks if a string variable contains any delimiters from defined in \$IFS
+hasdelimiters(){
+    #\$1 - string
+    #\$2 - cutsom \$IFS instead of global (optional)
+
+    local IFS="\$IFS"
+    if [[ ! -z "\$2" ]]; then
+        IFS="\$2"
+    fi
+
+    local char=""
+    for (( i=0; i<\${#IFS}; i++ )); do
+        char="\${IFS:\$i:1}"
+        if [[ "\$1" == *"\$char"* ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+
+#returns 0 if a given string contains delimiters
+#returns 1 if it doesn't
+}
+#example:
+#hasdelimiters "\$0"
+#[[ \$? -eq 0 ]] && p="\"\$0\"" || p="\$0"
+
+#escapes all delimiters in a string from defined in \$IFS
+escapedelimiters(){
+    #\$1 - string
+    #\$2 - cutsom \$IFS instead of global (optional)
+
+    local IFS="\$IFS"
+    if [[ ! -z "\$2" ]]; then
+        IFS="\$2"
+    fi
+
+    local char=""
+    local escaped="\$1"
+    for (( i=0; i<\${#IFS}; i++ )); do
+        char="\${IFS:\$i:1}"
+        escaped="\${escaped//\$char/\\\\\$char}"
+    done
+
+    echo "\$escaped"
+
+#echoes the given string with delimiters escaped. String may remain unchanged
+}
+
+
 _complete()
 {
-  _complete_commands=\`"\$program" --print-options\` # keys
+    _complete_commands="\`"\$program" --print-options\`" # keys
 
-  local cur
-  COMPREPLY=()
-  cur="\${COMP_WORDS[COMP_CWORD]}"
-  COMPREPLY=( \$(compgen -W "\${_complete_commands}" -- \${cur}) )
+    local cur
+    COMPREPLY=()
+    cur="\${COMP_WORDS[COMP_CWORD]}"
 
-  return 0
+    if [[ -n "\$cur" ]]; then
+        while IFS= read -r arg; do
+            if [[ -n "\$arg" ]]; then
+
+                # for every suggested keyword there can be 3 variants of input:
+                    #1) raw input, or with all delimiters escaped;  ( examples: \`--help\`  ,  \`Ubuntu\ 18.04\` )
+                    #2) double-quoted;                              ( examples: \`"--help"\`,  \`"Ubuntu 18.04"\` )
+                    #3) single-quoted;                              ( examples: \`'--help'\`,  \`'Ubuntu 18.04'\` )
+
+                local escapedDelim="\`escapedelimiters "\$arg"\`"
+                local escapedDQ="\"\${arg//\"/\\\\\"}\""
+                local escapedSQ="'\${arg//\'/\\\\\'}'"
+
+                [[ "\$escapedDelim" = \$cur* ]] && COMPREPLY+=( "\$escapedDelim" )
+                [[ "\$escapedDQ" = \$cur* ]]    && COMPREPLY+=( "\$escapedDQ" )
+                [[ "\$escapedSQ" = \$cur* ]]    && COMPREPLY+=( "\$escapedSQ" )
+
+            fi
+        done <<< "\$_complete_commands"
+
+    else
+        while IFS= read -r arg; do
+            if [[ -n "\$arg" ]]; then
+
+                # if no input provided yet, don't throw at a user all three variant for each suggested keyword
+                # instead, i think, it's better to provide raw keyword if no delimiters, and double quoted otherwise
+                # ( examples: \`--help\`, \`"Ubuntu 18.04"\` )
+
+                hasdelimiters "\$arg"  &&  arg="\"\${arg//\"/\\\\\"}\""
+
+                [[ "\$arg" = \$cur* ]] && COMPREPLY+=( "\$arg" )
+
+            fi
+        done <<< "\$_complete_commands"
+
+    fi
+
+    return 0
 }
-complete -o nospace -F _complete "\$program"
+complete -F _complete "\$program"
 
 EOF
-
 
 # ----- ini_interface -----
 ProgramFiles[ini_interface]="/opt/${programname}/ini_interface.py"
@@ -991,6 +1077,7 @@ ExitCode[noimages]=3
 ExitCode[cannotresolveimage]=4
 ExitCode[failedtocreateconfig]=5
 ExitCode[failedtoreinstall]=6
+ExitCode[unknownarg]=7
 
 
 # ----- program files -----
@@ -1215,6 +1302,29 @@ hasdelimiters(){
 #[[ $? -eq 0 ]] && p="\"$0\"" || p="$0"
 
 
+#escapes all delimiters in a string from defined in $IFS
+escapedelimiters(){
+    #$1 - string
+    #$2 - cutsom $IFS instead of global (optional)
+
+    local IFS="$IFS"
+    if [[ ! -z "$2" ]]; then
+        IFS="$2"
+    fi
+
+    local char=""
+    local escaped="$1"
+    for (( i=0; i<${#IFS}; i++ )); do
+        char="${IFS:$i:1}"
+        escaped="${escaped//$char/\\$char}"
+    done
+
+    echo "$escaped"
+
+#echoes the given string with delimiters escaped. String may remain unchanged
+}
+
+
 #echoes given string "$1" adjusted by length "$2" (trimmed, or appended spaces)
 adjusttolen(){
     #$1 - string
@@ -1233,6 +1343,16 @@ adjusttolen(){
 }
 #example:
 #adjusttolen "$string" 10
+
+
+#whether a given string is a name of a normal array (not associative)
+isArray(){
+    #$1 - name of a variable
+    declare -p variable-name 2> /dev/null | grep -q '^declare \-a'
+    return $?
+    #returns 0 if the given string is a name of a normal array
+    #returns 1 otherwise
+}
 
 
 
@@ -1311,9 +1431,24 @@ verify_config_file(){
     fi
 }
 
+# reads config sections names into an Array with the given name
+config_read_sections_into_array(){
+    #$1 - name of an Array variable to populate with section names 
 
-config_get_sections(){
-    "$python3" "${ProgramFiles[config_get_sections]}" "$config_file" "$config_settings_section"
+    isArray "$1" || ( hasdelimiters "$1" && return 1 )
+
+    local sections="`"$python3" "${ProgramFiles[config_get_sections]}" "$config_file" "$config_settings_section"`"
+
+    # reads lines from a string variable
+    while IFS= read -r line; do
+        if [[ -n "$line" ]]; then
+            line="${line//\"/\\\"}" # escapes double quotes
+            eval "$1+=( \"$line\" )"
+        fi
+    done <<< "$sections"
+
+    #returns 1 if the given strign contains delimiters
+    #this function modifies state: it rewrites or creates a variable with the name given as the first argument
 }
 
 config_get_setting(){
@@ -1497,6 +1632,8 @@ $quote_str
 $p ${ProgramOptions[help]}
         $unquote_str"
 
+InterfaceText[unknownarg]="$ERROR: unknown arg:"
+
 
 
 ############################################
@@ -1535,14 +1672,7 @@ case "$1" in
         verify_essential_file "${ProgramFiles[config_get_sections]}"
         verify_config_file
         
-        declare configSections="`config_get_sections`"
-        declare OSs=()
-        # reads lines from a string variable
-        while IFS= read -r line; do
-            if [[ -n "$line" ]]; then
-                OSs+=( "$line" )
-            fi
-        done <<< "$configSections"
+        config_read_sections_into_array OSs
 
         for name in "${!OSs[@]}"; do
             run_on "${OSs["$name"]}"
@@ -1553,8 +1683,14 @@ case "$1" in
     "${ProgramOptions[printoptions]}")
         verify_essential_file "${ProgramFiles[ini_interface_ro]}"
         verify_essential_file "${ProgramFiles[config_get_sections]}"
-        Options=("${ProgramOptions[@]}" `config_get_sections`)
-        echo "${Options[@]}"
+        
+        config_read_sections_into_array Sections
+        
+        Options=("${ProgramOptions[@]}" "${Sections[@]}")
+        for opt in "${Options[@]}"; do
+            echo "$opt"
+        done
+        #echo "${Options[@]}"
         exit_ 0
         ;;
     "${ProgramOptions[createconfig]}")
@@ -1581,8 +1717,18 @@ case "$1" in
         verify_essential_file "${ProgramFiles[ini_interface_ro]}"
         verify_essential_file "${ProgramFiles[config_get_value_from_section]}"
         verify_config_file
-        run_on "$1"
-        exit_ 0
+
+        config_read_sections_into_array Sections
+
+        for sect in "${Sections[@]}"; do
+            if [[ "$1" == "$sect" ]]; then
+                run_on "$1"
+                exit_ 0
+            fi
+        done
+
+        echo -e "${InterfaceText[unknownarg]} $1"
+        exit_ ${ExitCode[unknownarg]}
         ;;
     
     

@@ -1121,6 +1121,9 @@ ProgramOptions_description[printoptions]=""
 ProgramOptions[here]="--here"
 ProgramOptions_description[here]=""
 
+ProgramOptions[herenocheck]="--here-nocheck"
+ProgramOptions_description[herenocheck]=""
+
 
 # ----- formatting -----
 #https://misc.flogisoft.com/bash/tip_colors_and_formatting
@@ -1535,8 +1538,8 @@ run_on(){
         tab="--window"
     fi
 
-    "$terminal" "$tab" --profile="$profile" --title="$terminal_name" --active -- "$0" --here "$image"
-    #echo "\"$terminal\" \"$tab\" --profile=\"$profile\" --title=\"$terminal_name\" --active -- \"$0\" --here \"$image\""
+    "$terminal" "$tab" --profile="$profile" --title="$terminal_name" --active -- "$0" "${ProgramOptions[herenocheck]}" "$image"
+    #echo "\"$terminal\" \"$tab\" --profile=\"$profile\" --title=\"$terminal_name\" --active -- \"$0\" "${ProgramOptions[herenocheck]}" \"$image\""
 
 }
 
@@ -1616,10 +1619,7 @@ When used with --here key, runs in current terminal without invoking new one
 
  Options:
 "
-for opt in "${!ProgramOptions[@]}"; do
-    if [[ "$opt" == "printoptions" ]] || [[ "$opt" == "here" ]]; then
-        continue
-    fi
+for opt in "help" "version" "reinstall" "all" "createconfig" "createconfigfull"; do
     InterfaceText[help]="${InterfaceText[help]} `adjusttolen "${ProgramOptions["$opt"]}" $max_PO` ${ProgramOptions_description["$opt"]}\n"
 done
 
@@ -1664,6 +1664,9 @@ case "$1" in
         verify_essential_file "${ProgramFiles[ini_interface_ro]}"
         verify_essential_file "${ProgramFiles[config_get_value_from_section]}"
         verify_config_file
+        CMD "$2"
+        ;;
+    "${ProgramOptions[herenocheck]}")
         CMD "$2"
         ;;
     "${ProgramOptions[all]}")

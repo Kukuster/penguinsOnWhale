@@ -72,4 +72,10 @@ terminal_name = Amazon Linux 2
 ```
 
 
+### So this repo has like 0 stars, and you want me to run this big script on my system.
+
+Right..., so because this script depends on and is essentially a fancy wrapper around `gnome-terminal` and `docker`, I'm not able to provide a proper online demo.
+If you are particularly concerned about your security, you can run this on Ubuntu on a VM.
+
+
 

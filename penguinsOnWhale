@@ -178,7 +178,7 @@ _complete()
                 local escapedDQ="\"\${arg//\"/\\\\\"}\""
                 local escapedSQ="'\${arg//\'/\\\\\'}'"
 
-                [[ "\$escapedDelim" = \$cur* ]] && COMPREPLY+=( "\$escapedDelim" )
+                [[ "\$arg" = \$cur* ]] && COMPREPLY+=( "\$escapedDelim" )
                 [[ "\$escapedDQ" = \$cur* ]]    && COMPREPLY+=( "\$escapedDQ" )
                 [[ "\$escapedSQ" = \$cur* ]]    && COMPREPLY+=( "\$escapedSQ" )
 

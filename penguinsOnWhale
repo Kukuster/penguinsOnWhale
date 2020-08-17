@@ -1035,38 +1035,50 @@ declare -r config_file="$programname.conf"
 
 # ----- config keys and default values -----
 declare -r config_settings_section="Program settings"
-declare -A ConfigKeys=()
-declare -A ConfigKeys_defaultvalue=()
-declare -A ConfigKeysImage=()
+declare -A ConfigSettings_key=()
+declare -A ConfigSettings_defaultvalue=()
+declare -A ConfigSettings_value=()
+declare -A ConfigImage_key=()
 
-ConfigKeys[docker_images_prefix]="docker_images_prefix"
-ConfigKeys_defaultvalue[docker_images_prefix]=""
+ConfigSettings_key[docker_images_prefix]="docker_images_prefix"
+ConfigSettings_defaultvalue[docker_images_prefix]=""
+ConfigSettings_value[docker_images_prefix]=""
 
-ConfigKeys[docker_images_suffix]="docker_images_suffix"
-ConfigKeys_defaultvalue[docker_images_suffix]=""
+ConfigSettings_key[docker_images_suffix]="docker_images_suffix"
+ConfigSettings_defaultvalue[docker_images_suffix]=""
+ConfigSettings_value[docker_images_suffix]=""
 
-ConfigKeys[terminal_profile]="terminal_profile"
-ConfigKeys_defaultvalue[terminal_profile]="$programname"
+ConfigSettings_key[terminal_profile]="terminal_profile"
+ConfigSettings_defaultvalue[terminal_profile]=""
+ConfigSettings_value[terminal_profile]=""
 
-ConfigKeys[tab]="open_terminal_as_tab"
-ConfigKeys_defaultvalue[tab]="True"
+ConfigSettings_key[tab]="open_terminal_as_tab"
+ConfigSettings_defaultvalue[tab]="True"
+ConfigSettings_value[tab]=""
+openAsTabOrWindow="--window"
 
-ConfigKeys[docker_mount_source]="docker_mount_source"
-ConfigKeys_defaultvalue[docker_mount_source]=""
+ConfigSettings_key[docker_mount_source]="docker_mount_source"
+ConfigSettings_defaultvalue[docker_mount_source]=""
+ConfigSettings_value[docker_mount_source]=""
 
-ConfigKeys[docker_mount_destination]="docker_mount_destination"
-ConfigKeys_defaultvalue[docker_mount_destination]=""
+ConfigSettings_key[docker_mount_destination]="docker_mount_destination"
+ConfigSettings_defaultvalue[docker_mount_destination]=""
+ConfigSettings_value[docker_mount_destination]=""
 
-ConfigKeys[cmd]="cmd"
-ConfigKeys_defaultvalue[cmd]=""
+ConfigSettings_key[cmd]="cmd"
+ConfigSettings_defaultvalue[cmd]=""
+ConfigSettings_value[cmd]=""
 
-ConfigKeys[cmd_arg]="cmd_arg"
-ConfigKeys_defaultvalue_cmd_arg=()
+ConfigSettings_key[cmd_arg]="cmd_arg"
+ConfigSettings_defaultvalue_cmd_arg=()
+ConfigSettings_value_cmd_args=()
 
 
-ConfigKeysImage[docker_image]="docker_image"
-ConfigKeysImage[terminal_name]="terminal_name"
-
+ConfigImage_key[docker_image]="docker_image"
+ConfigImage_key[terminal_name]="terminal_name"
+ConfigImage_key[terminal_profile]="terminal_profile"
+ConfigImage_key[docker_mount_source]="docker_mount_source"
+ConfigImage_key[docker_mount_destination]="docker_mount_destination"
 
 
 # ----- exit codes -----
@@ -1458,7 +1470,7 @@ config_get_setting(){
     #$1 - setting name (key)
     #$2 - index (for numerated keys)
 
-    local key="${ConfigKeys["$1"]}"
+    local key="${ConfigSettings_key["$1"]}"
     if [[ -z "$key" ]]; then
         return 1
     fi
@@ -1477,7 +1489,7 @@ config_get_setting(){
         return 0
     fi
 
-    echo "${ConfigKeys_defaultvalue["$1"]}"
+    echo "${ConfigSettings_defaultvalue["$1"]}"
     
 }
 
@@ -1511,6 +1523,90 @@ config_create(){
     fi
 }
 
+# reads values from the config file into the global variables "ConfigSettings_value"
+config_read_settings(){
+
+    # ----- docker_images_prefix -----
+    local prefix="`config_get_setting "${ConfigSettings_key[docker_images_prefix]}"`"
+    if [ -n "$prefix" ]; then
+        ConfigSettings_value[docker_images_prefix]="$prefix"
+    else
+        ConfigSettings_value[docker_images_prefix]="${ConfigSettings_defaultvalue[docker_images_prefix]}"
+    fi
+
+    # ----- docker_images_suffix -----
+    local suffix="`config_get_setting "${ConfigSettings_key[docker_images_suffix]}"`"
+    if [ -n "$suffix" ]; then
+        ConfigSettings_value[docker_images_suffix]="$suffix"
+    else
+        ConfigSettings_value[docker_images_suffix]="${ConfigSettings_defaultvalue[docker_images_suffix]}"
+    fi
+
+    # ----- terminal_profile -----
+    local profile="`config_get_setting "${ConfigSettings_key[terminal_profile]}"`"
+    if [ -n "$profile" ]; then
+        ConfigSettings_value[terminal_profile]="$profile"
+    else
+        ConfigSettings_value[terminal_profile]="${ConfigSettings_defaultvalue[terminal_profile]}"
+    fi
+
+    # ----- open_terminal_as_tab -----
+    local tab="`config_get_setting "${ConfigSettings_key[tab]}"`"
+    if [ -n "$tab" ]; then
+        ConfigSettings_value[tab]="$tab"
+    else
+        ConfigSettings_value[tab]="${ConfigSettings_defaultvalue[tab]}"
+    fi
+
+
+    # if mount paths on the host and on a docker image is specified, add "--mount" to "docker run" arguments
+    # ----- docker_mount_source -----
+    local mount_source="`config_get_setting "${ConfigSettings_key[docker_mount_source]}"`"
+    if [ -n "$mount_source" ]; then
+        ConfigSettings_value[docker_mount_source]="$mount_source"
+    else
+        ConfigSettings_value[docker_mount_source]="${ConfigSettings_defaultvalue[docker_mount_source]}"
+    fi
+
+    # ----- docker_mount_destination -----
+    local mount_destination="`config_get_setting "${ConfigSettings_key[docker_mount_destination]}"`"
+    if [ -n "$mount_destination" ]; then
+        ConfigSettings_value[docker_mount_destination]="$mount_destination"
+    else
+        ConfigSettings_value[docker_mount_destination]="${ConfigSettings_defaultvalue[docker_mount_destination]}"
+    fi
+
+
+    # get the command and arguments to execute on a docker container
+    # ----- cmd -----
+    local cmd="`config_get_setting "${ConfigSettings_key[cmd]}"`"
+    if [ -n "$cmd" ]; then
+        ConfigSettings_value[cmd]="$cmd"
+    else
+        ConfigSettings_value[cmd]="${ConfigSettings_defaultvalue[cmd]}"
+    fi
+
+    if [ -n "${ConfigSettings_value[cmd]}" ]; then
+        # ----- args -----
+        local arg
+        local -i i=0
+        while :; do
+            i=$((i+1))
+            arg="`config_get_setting "${ConfigSettings_key[cmd_arg]}" ${i}`"
+            if [[ -z "$arg" ]]; then
+                break
+            else
+                ConfigSettings_value_cmd_args+=("$arg")
+            fi
+        done
+
+        if [ -z "${ConfigSettings_value_cmd_args[@]}" ]; then
+            ConfigSettings_value_cmd_args=( "${ConfigSettings_defaultvalue_cmd_arg[@]}" )
+        fi
+    fi
+
+}
+
 install(){
     #$@ - keys
     "${ProgramFiles[installator]}" --install "$@"
@@ -1522,24 +1618,31 @@ install(){
 run_on(){
     #$1 - docker image (section name in a config file)
 
-    local profile="`config_get_setting terminal_profile`"
-    local tab="`config_get_setting tab`"
-
-    local image="$1"
-
-    local terminal_name="`config_get_value_from_section "$image" "${ConfigKeysImage[terminal_name]}"`"
-    if [[ -z "$terminal_name" ]]; then
-        terminal_name="$image"
-    fi
-
-    if [[ -z "$tab" ]] || [[ "$tab" == "True" ]] || [[ "$tab" =~ ^[Yy] ]]; then
+    local tab="${ConfigSettings_value[tab]}"
+    if [[ -z "$tab" ]] || [[ "$tab" =~ ^[Tt]rue$ ]] || [[ "$tab" =~ ^[Yy] ]]; then
         tab="--tab"
     else
         tab="--window"
     fi
 
-    "$terminal" "$tab" --profile="$profile" --title="$terminal_name" --active -- "$0" "${ProgramOptions[herenocheck]}" "$image"
-    #echo "\"$terminal\" \"$tab\" --profile=\"$profile\" --title=\"$terminal_name\" --active -- \"$0\" "${ProgramOptions[herenocheck]}" \"$image\""
+    local image="$1"
+
+    local terminal_name="`config_get_value_from_section "$image" "${ConfigImage_key[terminal_name]}"`"
+    if [[ -z "$terminal_name" ]]; then
+        terminal_name="$image"
+    fi
+
+    local terminal_profile="`config_get_value_from_section "$image" "${ConfigImage_key[terminal_profile]}"`"
+    if [[ -n "$terminal_profile" ]]; then
+        terminal_profile="--profile=${terminal_profile}"
+    elif [[ -n "${ConfigSettings_value[terminal_profile]}" ]]; then
+        terminal_profile="--profile=${ConfigSettings_value[terminal_profile]}"
+    else
+        terminal_profile=""
+    fi
+
+
+    "$terminal" "$tab" "$terminal_profile" --title="$terminal_name" --active -- "$0" "${ProgramOptions[herenocheck]}" "$image"
 
 }
 
@@ -1556,45 +1659,35 @@ CMD(){
     fi
     
     # figures out actual docker image name from the config
-    local image_docker="`config_get_value_from_section "$image" "${ConfigKeysImage[docker_image]}"`"
+    local image_docker="`config_get_value_from_section "$image" "${ConfigImage_key[docker_image]}"`"
     if [[ -z "$image_docker" ]]; then
         exit_ ${ExitCode[cannotresolveimage]}
     fi
-    local prefix="`config_get_setting docker_images_prefix`"
-    local suffix="`config_get_setting docker_images_suffix`"
-    image_docker="${prefix}${image_docker}${suffix}"
-    local terminal_name="`config_get_value_from_section "$image" "${ConfigKeysImage[terminal_name]}"`"
+
+    image_docker="${ConfigSettings_value[docker_images_prefix]}${image_docker}${ConfigSettings_value[docker_images_suffix]}"
+
+    local terminal_name="`config_get_value_from_section "$image" "${ConfigImage_key[terminal_name]}"`"
     if [[ -z "$terminal_name" ]]; then
         terminal_name="$image"
     fi
 
     # if mount paths on the host and on a docker image is specified, add "--mount" to "docker run" arguments
-    local mount_source="`config_get_setting docker_mount_source`"
-    local mount_destination="`config_get_setting docker_mount_destination`"
     local mount=()
-    if [[ ! -z "$mount_source" ]] && [[ ! -z "$mount_destination" ]]; then
+    local this_mount_source="`config_get_value_from_section "$image" "${ConfigImage_key[docker_mount_source]}"`"
+    local this_mount_destination="`config_get_value_from_section "$image" "${ConfigImage_key[docker_mount_destination]}"`"
+
+
+    # checks if the mount points defined specifically for this image
+    if   [[ -n "$this_mount_source" ]] && [[ -n "$this_mount_destination" ]]; then
         mount+=( "--mount" )
-        mount+=( "type=bind,src=$mount_source,dst=$mount_destination" )
+        mount+=( "type=bind,src=$this_mount_source,dst=$this_mount_destination" )
+    # otherwise, use global settings
+    elif [[ -n "${ConfigSettings_value[docker_mount_source]}" ]] && [[ -n "${ConfigSettings_value[docker_mount_destination]}" ]]; then
+        mount+=( "--mount" )
+        mount+=( "type=bind,src=${ConfigSettings_value[docker_mount_source]},dst=${ConfigSettings_value[docker_mount_destination]}" )
     fi
 
-    # get the cmd and args to execute on a docker container
-    local cmd="`config_get_setting cmd`"
-    local args=()
-    if [[ ! -z "$cmd" ]]; then
-        local arg
-        local -i i=0
-        while :; do
-            i=$((i+1))
-            arg="`config_get_setting cmd_arg ${i}`"
-            if [[ -z "$arg" ]]; then
-                break
-            else
-                args+=("$arg")
-            fi
-        done
-    fi
-    
-    "$docker" run -it --hostname "$terminal_name" "${mount[@]}" --rm "$image_docker" "$cmd" "${args[@]}"
+    "$docker" run -it --hostname "$terminal_name" "${mount[@]}" --rm "$image_docker" "${ConfigSettings_value[cmd]}" "${ConfigSettings_value_cmd_args[@]}"
     ec=$?
     
     sleep infinity
@@ -1664,9 +1757,11 @@ case "$1" in
         verify_essential_file "${ProgramFiles[ini_interface_ro]}"
         verify_essential_file "${ProgramFiles[config_get_value_from_section]}"
         verify_config_file
+        config_read_settings
         CMD "$2"
         ;;
     "${ProgramOptions[herenocheck]}")
+        config_read_settings
         CMD "$2"
         ;;
     "${ProgramOptions[all]}")
@@ -1674,7 +1769,7 @@ case "$1" in
         verify_essential_file "${ProgramFiles[config_get_value_from_section]}"
         verify_essential_file "${ProgramFiles[config_get_sections]}"
         verify_config_file
-        
+        config_read_settings
         config_read_sections_into_array OSs
 
         for name in "${!OSs[@]}"; do
@@ -1720,6 +1815,8 @@ case "$1" in
         verify_essential_file "${ProgramFiles[ini_interface_ro]}"
         verify_essential_file "${ProgramFiles[config_get_value_from_section]}"
         verify_config_file
+        
+        config_read_settings
 
         config_read_sections_into_array Sections
 

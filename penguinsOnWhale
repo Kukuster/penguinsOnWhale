@@ -131,8 +131,7 @@ hasdelimiters(){
 #returns 1 if it doesn't
 }
 #example:
-#hasdelimiters "\$0"
-#[[ \$? -eq 0 ]] && p="\"\$0\"" || p="\$0"
+#hasdelimiters "\$0" && p="\"\$0\"" || p="\$0"
 
 #escapes all delimiters in a string from defined in \$IFS
 escapedelimiters(){
@@ -155,6 +154,8 @@ escapedelimiters(){
 
 #echoes the given string with delimiters escaped. String may remain unchanged
 }
+#example:
+#local escapedDelim="\`escapedelimiters "\$arg"\`"
 
 
 _complete()
@@ -589,9 +590,14 @@ config[settings_section]={
     'cmd_arg1': '-la'
 }
 
-config['ubuntu18.04']= {'docker_image': 'ubuntu:18.04', 'terminal_name': 'Ubuntu 18.04'}
-config['fedora31']=    {'docker_image': 'fedora:31', 'terminal_name': 'Fedora 31'}
-config['amazonlinux2']={'docker_image': 'amazonlinux:2', 'terminal_name': 'Amazon Linux 2'}
+config['ubuntu18.04']= {
+    'terminal_name': 'Ubuntu 18.04',
+    'docker_image': 'ubuntu:18.04',
+    'docker_container': 'myReusableUbuntu1804container',
+    'reuse_container': 'True',
+}
+config['fedora31']=    {'terminal_name': 'Fedora 31', 'docker_image': 'fedora:31'}
+config['amazonlinux2']={'terminal_name': 'Amazon Linux 2', 'docker_image': 'amazonlinux:2'}
 
 EOF
 
@@ -617,6 +623,8 @@ config = map_ini_file(config_file)
 config[settings_section]={
     'docker_images_prefix': '',
     'docker_images_suffix': '',
+    'docker_containers_prefix': 'pow_',
+    'docker_containers_suffix': '',
     'docker_mount_source': '',
     'docker_mount_destination': '',
     'terminal_profile': '${programname}',
@@ -635,9 +643,46 @@ config[settings_section]={
     'cmd_arg11': 'and so on'
 }
 
-config['ubuntu18.04']= {'docker_image': 'ubuntu:18.04', 'terminal_name': 'Ubuntu 18.04'}
-config['fedora31']=    {'docker_image': 'fedora:31', 'terminal_name': 'Fedora 31'}
-config['amazonlinux2']={'docker_image': 'amazonlinux:2', 'terminal_name': 'Amazon Linux 2'}
+config['ubuntu18.04']= {
+    'terminal_name': 'Ubuntu 18.04',
+    'terminal_profile': 'default',
+    'docker_image': 'ubuntu:18.04',
+    'docker_container': 'myTestUbuntu1804container',
+    'reuse_container': 'No',
+    'docker_mount_source': '',
+    'docker_mount_destination': '',
+    'cmd': 'ls',
+    'cmd_arg1': '-lat'
+}
+config['fedora31']=    {
+    'terminal_name': 'Fedora 31',
+    'docker_image': 'fedora:31',
+    'docker_container': 'myReusableFedora31container',
+    'reuse_container': 'Yes',
+    'docker_mount_source': '',
+    'docker_mount_destination': ''
+}
+config['amazonlinux2']={
+    'terminal_name': 'Amazon Linux 2',
+    'docker_image': 'amazonlinux:2'
+}
+config['opensuse']={
+    'terminal_name': 'OpenSUSE',
+    'docker_image': 'opensuse/tumbleweed'
+}
+config['debian10.2']={
+    'terminal_name': 'Debian 10.2',
+    'docker_image': 'debian:10.2'
+}
+config['linuxmint']={
+    'terminal_name': 'Linux Mint',
+    'docker_image': 'vcatechnology/linux-mint'
+}
+config['centos8']={
+    'terminal_name': 'CentOS 8',
+    'docker_image': 'centos:8'
+}
+
 
 EOF
 
@@ -780,8 +825,7 @@ hasdelimiters(){
 #returns 1 if it doesn't
 }
 #example:
-#hasdelimiters "$0"
-#[[ $? -eq 0 ]] && p="\"$0\"" || p="$0"
+#hasdelimiters "$0" && p="\"$0\"" || p="$0"
 
 
 #echoes given string "$1" adjusted by length "$2" (trimmed, or appended spaces)
@@ -848,7 +892,7 @@ install(){
 
     echo -e "#=#=#=#=# ${b}$programname installation${b_end}${format_end} #=#=#=#=#"
     echo -e ""
-    echo -e "During the installation following files will be created/rewritten:"
+    echo -e "During the installation the following files will be created/rewritten:"
     echo -e ""
     for file in "${!ProgramFiles[@]}"; do
         owners="${ProgramFiles_owners[$file]}"
@@ -913,8 +957,7 @@ install(){
 #=#=#=#=#= interface =#=#=#=#=#
 declare -A InterfaceText=()
 
-hasdelimiters "$0"
-[[ $? -eq 0 ]] && p="\"$0\"" || p="$0"
+hasdelimiters "$0" && p="\"$0\"" || p="$0"
 
 InterfaceText[default]="${b}$programname v$version${format_end} (${revision})
 This is free software: you are free to change and redistribute it.
@@ -1034,7 +1077,7 @@ declare -r config_file="$programname.conf"
 
 
 # ----- config keys and default values -----
-declare -r config_settings_section="Program settings"
+declare -r config_settings_section="Global settings"
 declare -A ConfigSettings_key=()
 declare -A ConfigSettings_defaultvalue=()
 declare -A ConfigSettings_value=()
@@ -1047,6 +1090,14 @@ ConfigSettings_value[docker_images_prefix]=""
 ConfigSettings_key[docker_images_suffix]="docker_images_suffix"
 ConfigSettings_defaultvalue[docker_images_suffix]=""
 ConfigSettings_value[docker_images_suffix]=""
+
+ConfigSettings_key[docker_containers_prefix]="docker_containers_prefix"
+ConfigSettings_defaultvalue[docker_containers_prefix]=""
+ConfigSettings_value[docker_containers_prefix]=""
+
+ConfigSettings_key[docker_containers_suffix]="docker_containers_suffix"
+ConfigSettings_defaultvalue[docker_containers_suffix]=""
+ConfigSettings_value[docker_containers_suffix]=""
 
 ConfigSettings_key[terminal_profile]="terminal_profile"
 ConfigSettings_defaultvalue[terminal_profile]=""
@@ -1074,11 +1125,15 @@ ConfigSettings_defaultvalue_cmd_arg=()
 ConfigSettings_value_cmd_args=()
 
 
-ConfigImage_key[docker_image]="docker_image"
 ConfigImage_key[terminal_name]="terminal_name"
 ConfigImage_key[terminal_profile]="terminal_profile"
+ConfigImage_key[docker_image]="docker_image"
+ConfigImage_key[docker_container]="docker_container"
+ConfigImage_key[reuse_container]="reuse_container"
 ConfigImage_key[docker_mount_source]="docker_mount_source"
 ConfigImage_key[docker_mount_destination]="docker_mount_destination"
+ConfigImage_key[cmd]="cmd"
+ConfigImage_key[cmd_arg]="cmd_arg"
 
 
 # ----- exit codes -----
@@ -1288,7 +1343,6 @@ areyousure(){
 #example:
 #areyousure "Are you sure?" yes
 
-
 #checks if a string variable contains any delimiters from defined in $IFS
 hasdelimiters(){
     #$1 - string
@@ -1313,8 +1367,7 @@ hasdelimiters(){
 #returns 1 if it doesn't
 }
 #example:
-#hasdelimiters "$0"
-#[[ $? -eq 0 ]] && p="\"$0\"" || p="$0"
+#hasdelimiters "$0" && p="\"$0\"" || p="$0"
 
 
 #escapes all delimiters in a string from defined in $IFS
@@ -1338,7 +1391,54 @@ escapedelimiters(){
 
 #echoes the given string with delimiters escaped. String may remain unchanged
 }
+#local escapedDelim="`escapedelimiters "$string"`"
 
+#replace all delimiters in a given 1st string with a given 2nd string
+replacedelimiters(){
+    #$1 - string 
+    #$2 - a replace
+    #$3 - cutsom $IFS instead of global (optional)
+
+    local IFS="$IFS"
+    if [[ ! -z "$3" ]]; then
+        IFS="$3"
+    fi
+
+    local char=""
+    local replaced="$1"
+    for (( i=0; i<${#IFS}; i++ )); do
+        char="${IFS:$i:1}"
+        replaced="${replaced//$char/$2}"
+    done
+
+    echo "$replaced"
+
+#echoes the given string with delimiters replaced. String may remain unchanged
+}
+
+#escapes all characters in a string that don't match a regexp with a substring
+replaceAllCharsNotMatching(){
+    #$1 - string
+    #$2 - a regexp that if a character not match, will be replaced with "$3" 
+    #$3 - a replace
+
+    local str="$1"
+    local replaced="$str"
+    local ichar=""
+    local -i i_
+    local len=${#str}
+    for (( i=0; i<$len; i++ )); do
+        ichar="${str:$i:1}"
+        if [[ ! "$ichar" =~ $2 ]]; then
+            i_=$((i+1))
+            replaced="${replaced:0:$i}${3}${replaced:$i_:$len}"
+        fi
+    done
+
+    echo "$replaced"
+
+#echoes the first string with the character that don't match a given regexp with a given string
+}
 
 #echoes given string "$1" adjusted by length "$2" (trimmed, or appended spaces)
 adjusttolen(){
@@ -1370,6 +1470,24 @@ isArray(){
 }
 
 
+#wheter a string means "yes" or "true":
+meansYes(){
+    #$1 - a string
+
+    if [[ "$1" =~ ^[Tt]rue$ ]] || [[ "$1" =~ ^[Yy] ]] || [[ "$1" =~ ^[Rr]ight$ ]] || [[ "$1" == "1" ]]; then
+        return 0
+    else
+        return 1
+    fi
+
+    #returns 0 if the string means "yes" or "true"
+    #returns 1 if not
+}
+#example:
+#if [[ -z "$val" ]] || meansYes "$val" ; then
+#   . . .
+#fi
+
 
 # ----- getters -----
 
@@ -1381,8 +1499,8 @@ get_programname(){
     else
         p="$0"
     fi
-    hasdelimiters "$p"
-    [[ $? -eq 0 ]] && p="\"$p\""
+    
+    hasdelimiters "$p" && p="\"$p\""
     echo "$p"
 }
 
@@ -1542,6 +1660,22 @@ config_read_settings(){
         ConfigSettings_value[docker_images_suffix]="${ConfigSettings_defaultvalue[docker_images_suffix]}"
     fi
 
+    # ----- docker_containers_prefix -----
+    local prefix="`config_get_setting "${ConfigSettings_key[docker_containers_prefix]}"`"
+    if [ -n "$prefix" ]; then
+        ConfigSettings_value[docker_containers_prefix]="$prefix"
+    else
+        ConfigSettings_value[docker_containers_prefix]="${ConfigSettings_defaultvalue[docker_containers_prefix]}"
+    fi
+
+    # ----- docker_containers_suffix -----
+    local suffix="`config_get_setting "${ConfigSettings_key[docker_containers_suffix]}"`"
+    if [ -n "$suffix" ]; then
+        ConfigSettings_value[docker_containers_suffix]="$suffix"
+    else
+        ConfigSettings_value[docker_containers_suffix]="${ConfigSettings_defaultvalue[docker_containers_suffix]}"
+    fi
+
     # ----- terminal_profile -----
     local profile="`config_get_setting "${ConfigSettings_key[terminal_profile]}"`"
     if [ -n "$profile" ]; then
@@ -1619,7 +1753,7 @@ run_on(){
     #$1 - docker image (section name in a config file)
 
     local tab="${ConfigSettings_value[tab]}"
-    if [[ -z "$tab" ]] || [[ "$tab" =~ ^[Tt]rue$ ]] || [[ "$tab" =~ ^[Yy] ]]; then
+    if [[ -z "$tab" ]] || meansYes "$tab" ; then
         tab="--tab"
     else
         tab="--window"
@@ -1666,6 +1800,7 @@ CMD(){
 
     image_docker="${ConfigSettings_value[docker_images_prefix]}${image_docker}${ConfigSettings_value[docker_images_suffix]}"
 
+    # figures out terminal name from the config
     local terminal_name="`config_get_value_from_section "$image" "${ConfigImage_key[terminal_name]}"`"
     if [[ -z "$terminal_name" ]]; then
         terminal_name="$image"
@@ -1687,9 +1822,68 @@ CMD(){
         mount+=( "type=bind,src=${ConfigSettings_value[docker_mount_source]},dst=${ConfigSettings_value[docker_mount_destination]}" )
     fi
 
-    "$docker" run -it --hostname "$terminal_name" "${mount[@]}" --rm "$image_docker" "${ConfigSettings_value[cmd]}" "${ConfigSettings_value_cmd_args[@]}"
-    ec=$?
-    
+    # figures out conteiner name
+    local container_name="`config_get_value_from_section "$image" "${ConfigImage_key[docker_container]}"`"
+    if [[ -z "$container_name" ]]; then
+        container_name="penguin_${image_docker}"
+
+        # but if it is not a proper docker container name ...
+        if [[ ! "$container_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]]; then
+            # ... then replace any wrong character with an underscore
+            container_name="`replaceAllCharsNotMatching "$container_name" [a-zA-Z0-9_.-] _ `"
+        fi
+
+    fi
+
+
+    # checks if the command defined specifically for this image
+    local cmd="`config_get_value_from_section "$image" "${ConfigImage_key[cmd]}"`"
+    local args=()
+    if [ -n "$cmd" ]; then
+        local arg
+        local -i i=0
+        while :; do
+            i=$((i+1))
+            arg="`config_get_value_from_section "$image" "${ConfigImage_key[cmd_arg]}${i}"`"
+            if [[ -z "$arg" ]]; then
+                break
+            else
+                args+=("$arg")
+            fi
+        done
+
+    # otherwise, use global settings
+    else
+        cmd=( "${ConfigSettings_value[cmd]}" )
+        args=( "${ConfigSettings_value_cmd_args[@]}" )
+
+    fi
+
+
+    # applies prefix and suffix for a container name
+    container_name="${ConfigSettings_value[docker_containers_prefix]}${container_name}${ConfigSettings_value[docker_containers_suffix]}"
+
+
+    # finally, depending on whether to reuse a container or not, run a docker container 
+    local reuse_container="`config_get_value_from_section "$image" "${ConfigImage_key[reuse_container]}"`"
+        
+    if meansYes "$reuse_container"; then
+        local containerid="`docker ps -aq -f name="^${container_name}$"`"
+        if [ -n "$containerid" ]; then
+            "$docker" start -i "$containerid"
+            ec=$?
+        else
+            "$docker" run -it --name "$container_name" --hostname "`replacedelimiters "$terminal_name" _`" "${mount[@]}" "$image_docker" "$cmd" "${args[@]}"
+            ec=$?
+        fi
+
+    else
+        "$docker" run -it --name "$container_name" --hostname "`replacedelimiters "$terminal_name" _`" "${mount[@]}" --rm "$image_docker"  "$cmd" "${args[@]}"
+        ec=$?
+    fi
+
+    echo -e ""
+    echo -e "${dim}${b}docker execution finished with exit code $ec, sleeping... [enter ^C to terminate]${format_end}"
     sleep infinity
     exit_ "$ec"
 

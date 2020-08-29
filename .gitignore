@@ -1,3 +1,4 @@
 **/*~
 **/*.conf
 !**/*.example.conf
+devnotes.txt

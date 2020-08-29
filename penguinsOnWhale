@@ -17,13 +17,21 @@
 #=#=#=#=#= variables =#=#=#=#=#
 
 declare -r programname="penguinsOnWhale"
-declare -r version="1.0"
-declare -r revision="2020.05.25"
+declare -r version="2.0"
+declare -r revision="2020.08.29"
 declare -r source="https://github.com/Kukuster/penguinsOnWhale"
 
 program_user="$(stat -c '%U' "$0")"
 program_group="$(stat -c '%G' "$0")"
 running_user="$USER"
+possible_HOME="`getent passwd "$program_user" | cut -d: -f6`"
+[ -d "$possible_HOME" ] && HOME="$possible_HOME"
+
+
+declare appDependencies="python=%python%
+docker=%docker%
+terminal=%terminal%
+config_file=%config_file%"
 
 
 # ----- exit codes -----
@@ -33,19 +41,23 @@ ExitCode[installationerror]=1
 
 # ----- formatting -----
 #https://misc.flogisoft.com/bash/tip_colors_and_formatting
+#https://askubuntu.com/questions/528928/how-to-do-underline-bold-italic-strikethrough-color-background-and-size-i/985386#985386
 declare -r format_end='\e[0m'
 
 declare -r b='\e[1m'
-declare -r b_end='\e[21m'
 declare -r dim='\e[2m'
+declare -r b_dim_end='\e[22m'
+declare -r b_end='\e[22m'
 declare -r dim_end='\e[22m'
-declare -r u='\e[4m'
-declare -r u_end='\e[24m'
+declare -r u='\e[4:1m'
+declare -r uu='\e[4:2m'
+declare -r cu='\e[4:3m'
+declare -r u_end='\e[4:0m'
 declare -r blink='\e[5m'
 declare -r blink_end='\e[25m'
 
 declare -r color_end='\e[39m'
-declare -r black='\e[39m'
+declare -r black='\e[30m'
 declare -r red='\e[31m'
 declare -r green='\e[32m'
 declare -r yellow='\e[33m'
@@ -60,14 +72,15 @@ declare -r lightyellow='\e[93m'
 declare -r lightblue='\e[94m'
 declare -r lightmagenta='\e[95m'
 declare -r lightcyan='\e[96m'
-declare -r lightwhite='\e[97m'
+declare -r white='\e[97m'
 
-declare -r quote_str="${b}${dim}<<${dim_end}${format_end}"
-declare -r unquote_str="${b}${dim}>>${dim_end}${format_end}"
+declare -r quote_str="${b}${dim}<<${b_dim_end}"
+declare -r unquote_str="${b}${dim}>>${b_dim_end}"
 
-declare -r ERROR="${b}${red}ERROR${color_end}${format_end}"
-declare -r WARNING="${b}${yellow}WARNING${color_end}${format_end}"
+declare -r ERROR="${b}${red}ERROR${color_end}${b_end}"
+declare -r WARNING="${b}${yellow}WARNING${color_end}${b_end}"
 
+declare -r programname_fancy="${b}\e[38;5;216mpenguins${white}On${blue}Whale${color_end}${format_end}"
 
 
 
@@ -76,35 +89,40 @@ declare -A ProgramFiles=()
 declare -A ProgramFiles_owners=()
 declare -A ProgramFiles_permissions=()
 declare -A ProgramFiles_contents=()
+declare -A ProgramFiles_loadContents=()
 
 
 # ----- installator -----
-ProgramFiles[installator]="/opt/${programname}/installator.sh"
-ProgramFiles_owners[installator]="${program_user}:${program_group}"
+ProgramFiles[installator]="/opt/${programname}/installator.sh";
+ProgramFiles_owners[installator]="${program_user}:${program_group}";
 ProgramFiles_permissions[installator]=754
-read -r -d '' ProgramFiles_contents[installator] < "$0"
-
+PFloadContents_installator(){
+    read -r -d '' ProgramFiles_contents[installator] < "$0"
+};
+ProgramFiles_loadContents[installator]=PFloadContents_installator;
 
 # ----- APP -----
-program_begin_match="### app start ###
-"
-program_end_match="
-### app end ###"
-install_contents="`cat "$0"`"
-program_contents=${install_contents##*$program_begin_match}
-program_contents=${program_contents%%$program_end_match*}
-
-ProgramFiles[penguinsOnWhale]="/usr/local/bin/${programname}"
-ProgramFiles_owners[penguinsOnWhale]="${program_user}:${program_group}"
+ProgramFiles[penguinsOnWhale]="/usr/local/bin/${programname}";
+ProgramFiles_owners[penguinsOnWhale]="${program_user}:${program_group}";
 ProgramFiles_permissions[penguinsOnWhale]=754
-ProgramFiles_contents[penguinsOnWhale]="$program_contents"
-
+PFloadContents_APP(){
+    program_begin_match="### app start ###
+"
+    program_end_match="
+    ### app end ###"
+    install_contents="`cat "$0"`"
+    program_contents=${install_contents##*$program_begin_match};
+    program_contents=${program_contents%%$program_end_match*};
+    ProgramFiles_contents[penguinsOnWhale]="$program_contents";
+};
+ProgramFiles_loadContents[penguinsOnWhale]=PFloadContents_APP;
 
 # ----- autocompletion -----
-ProgramFiles[autocompletion]="/etc/bash_completion.d/${programname}"
-ProgramFiles_owners[autocompletion]="${running_user}:${running_user}"
+ProgramFiles[autocompletion]="/etc/bash_completion.d/${programname}";
+ProgramFiles_owners[autocompletion]="${running_user}:${running_user}";
 ProgramFiles_permissions[autocompletion]=644
-read -r -d '' ProgramFiles_contents[autocompletion] << EOF
+PFloadContents_autocompletion(){
+    read -r -d '' ProgramFiles_contents[autocompletion] << EOF
 program="$programname"
 
 #checks if a string variable contains any delimiters from defined in \$IFS
@@ -131,7 +149,7 @@ hasdelimiters(){
 #returns 1 if it doesn't
 }
 #example:
-#hasdelimiters "\$0" && p="\"\$0\"" || p="\$0"
+#hasdelimiters "\$0" && p="\\"\$0\\"" || p="\$0"
 
 #escapes all delimiters in a string from defined in \$IFS
 escapedelimiters(){
@@ -160,28 +178,78 @@ escapedelimiters(){
 
 _complete()
 {
-    _complete_commands="\`"\$program" --print-options\`" # keys
 
     local cur
     COMPREPLY=()
     cur="\${COMP_WORDS[COMP_CWORD]}"
+    _complete_commands=""
+    
+    if [[ \$COMP_CWORD -eq 1 ]]; then
+        _complete_commands="\`"\$program" print-commands\`
+\`"\$program" print-options\`"
+
+    elif [[ "\${COMP_WORDS[1]}" == "run" ]]; then
+        if [[ "\${COMP_WORDS[2]}" == "all" ]]; then
+            _complete_commands="\`"\$program" print-command-options\`"
+        elif [[ "\${COMP_WORDS[2]}" == "--help" || "\${COMP_WORDS[2]}" == "-h" ]]; then
+            :
+        elif [[ "\${COMP_WORDS[2]}" == "here" || "\${COMP_WORDS[2]}" == "here-nocheck" ]] ; then
+            if [[ \$COMP_CWORD -eq 3 ]]; then 
+                _complete_commands="\`"\$program" print-images\`
+\`"\$program" print-command-options\`"
+            fi
+        elif [[ \$COMP_CWORD -eq 2 ]]; then
+            _complete_commands="\`"\$program" print-images\`
+\`"\$program" print-command-options\`"
+        else
+             _complete_commands="\`"\$program" print-images\`"
+        fi
+
+    elif [[ "\${COMP_WORDS[1]}" == "here" || "\${COMP_WORDS[1]}" == "here-nocheck" ]]; then
+         if [[ \$COMP_CWORD -eq 2 ]]; then 
+             _complete_commands="\`"\$program" print-images\`
+\`"\$program" print-command-options\`"
+         fi
+
+    elif [[ "\${COMP_WORDS[1]}" == "reinstall" ]]; then
+        _complete_commands="\`"\$program" print-command-options\`
+-f
+--force"
+
+    elif [[ "\${COMP_WORDS[1]}" == "all" || \\
+            "\${COMP_WORDS[1]}" == "create-config" || \\
+            "\${COMP_WORDS[1]}" == "create-config-full" ]]; then
+        _complete_commands="\`"\$program" print-command-options\`"
+
+    elif [[ "\${COMP_WORDS[1]}" == "--help" || \\
+            "\${COMP_WORDS[1]}" == "-h" || \\
+            "\${COMP_WORDS[1]}" == "--version" || \\
+            "\${COMP_WORDS[1]}" == "-v" || \\
+            "\${COMP_WORDS[1]}" == "print-commands" || \\
+            "\${COMP_WORDS[1]}" == "print-options" || \\
+            "\${COMP_WORDS[1]}" == "print-command-option" || \\
+            "\${COMP_WORDS[1]}" == "print-images" ]]; then
+        :
+    fi
+
+
 
     if [[ -n "\$cur" ]]; then
         while IFS= read -r arg; do
             if [[ -n "\$arg" ]]; then
 
                 # for every suggested keyword there can be 3 variants of input:
-                    #1) raw input, or with all delimiters escaped;  ( examples: \`--help\`  ,  \`Ubuntu\ 18.04\` )
+                    #1) raw input, or with all delimiters escaped;  ( examples: \`--help\`  ,  \`Ubuntu\\ 18.04\` )
                     #2) double-quoted;                              ( examples: \`"--help"\`,  \`"Ubuntu 18.04"\` )
                     #3) single-quoted;                              ( examples: \`'--help'\`,  \`'Ubuntu 18.04'\` )
 
                 local escapedDelim="\`escapedelimiters "\$arg"\`"
-                local escapedDQ="\"\${arg//\"/\\\\\"}\""
-                local escapedSQ="'\${arg//\'/\\\\\'}'"
+                local escapedDQ="\\"\${arg//\\"/\\\\\\"}\\""
+                local escapedSQ="'\${arg//\\'/\\\\\\'}'"
 
-                [[ "\$arg" = \$cur* ]] && COMPREPLY+=( "\$escapedDelim" )
-                [[ "\$escapedDQ" = \$cur* ]]    && COMPREPLY+=( "\$escapedDQ" )
-                [[ "\$escapedSQ" = \$cur* ]]    && COMPREPLY+=( "\$escapedSQ" )
+                [[ "\$arg" = \$cur* ]]       && COMPREPLY+=( "\$escapedDelim" )
+                [[ "\$escapedDQ" = \$cur* ]] && COMPREPLY+=( "\$escapedDQ" )
+                [[ "\$escapedSQ" = \$cur* ]] && COMPREPLY+=( "\$escapedSQ" )
 
             fi
         done <<< "\$_complete_commands"
@@ -194,7 +262,7 @@ _complete()
                 # instead, i think, it's better to provide raw keyword if no delimiters, and double quoted otherwise
                 # ( examples: \`--help\`, \`"Ubuntu 18.04"\` )
 
-                hasdelimiters "\$arg"  &&  arg="\"\${arg//\"/\\\\\"}\""
+                hasdelimiters "\$arg"  &&  arg="\\"\${arg//\\"/\\\\\\"}\\""
 
                 [[ "\$arg" = \$cur* ]] && COMPREPLY+=( "\$arg" )
 
@@ -209,11 +277,15 @@ complete -F _complete "\$program"
 
 EOF
 
+};
+ProgramFiles_loadContents[autocompletion]=PFloadContents_autocompletion;
+
 # ----- ini_interface -----
-ProgramFiles[ini_interface]="/opt/${programname}/ini_interface.py"
-ProgramFiles_owners[ini_interface]="${program_user}:${program_group}"
+ProgramFiles[ini_interface]="/opt/${programname}/ini_interface.py";
+ProgramFiles_owners[ini_interface]="${program_user}:${program_group}";
 ProgramFiles_permissions[ini_interface]=755
-read -r -d '' ProgramFiles_contents[ini_interface] << EOF
+PFloadContents_ini_interface(){
+    read -r -d '' ProgramFiles_contents[ini_interface] << EOF
 #python3
 import configparser
 import collections.abc
@@ -352,13 +424,15 @@ def map_ini_file(str_file_path):
 # Settings = map_ini_file('settings.ini')
 
 EOF
-
+};
+ProgramFiles_loadContents[ini_interface]=PFloadContents_ini_interface;
 
 # ----- ini_interface_ro -----
-ProgramFiles[ini_interface_ro]="/opt/${programname}/ini_interface_ro.py"
-ProgramFiles_owners[ini_interface_ro]="${program_user}:${program_group}"
+ProgramFiles[ini_interface_ro]="/opt/${programname}/ini_interface_ro.py";
+ProgramFiles_owners[ini_interface_ro]="${program_user}:${program_group}";
 ProgramFiles_permissions[ini_interface_ro]=755
-read -r -d '' ProgramFiles_contents[ini_interface_ro] << EOF
+PFloadContents_ini_interface_ro(){
+    read -r -d '' ProgramFiles_contents[ini_interface_ro] << EOF
 #python3
 import configparser
 import collections.abc
@@ -498,13 +572,15 @@ def map_ini_file(str_file_path):
 # Settings = map_ini_file('settings.ini')
 
 EOF
-
+};
+ProgramFiles_loadContents[ini_interface_ro]=PFloadContents_ini_interface_ro;
 
 # ----- config get sections -----
-ProgramFiles[config_get_sections]="/opt/${programname}/config_get_sections.py"
-ProgramFiles_owners[config_get_sections]="${program_user}:${program_group}"
-ProgramFiles_permissions[config_get_sections]=755
-read -r -d '' ProgramFiles_contents[config_get_sections] << EOF
+ProgramFiles[config_getSections]="/opt/${programname}/config_getSections.py";
+ProgramFiles_owners[config_getSections]="${program_user}:${program_group}";
+ProgramFiles_permissions[config_getSections]=755
+PFloadContents_config_getSections(){
+    read -r -d '' ProgramFiles_contents[config_getSections] << EOF
 import sys
 
 if (not bool(sys.argv) or len(sys.argv) < 3):
@@ -528,13 +604,15 @@ for section in config:
     print(section+"\n")
 
 EOF
-
+};
+ProgramFiles_loadContents[config_getSections]=PFloadContents_config_getSections;
 
 # ----- config get setting -----
-ProgramFiles[config_get_value_from_section]="/opt/${programname}/config_get_value_from_section.py"
-ProgramFiles_owners[config_get_value_from_section]="${program_user}:${program_group}"
-ProgramFiles_permissions[config_get_value_from_section]=755
-read -r -d '' ProgramFiles_contents[config_get_value_from_section] << EOF
+ProgramFiles[config_getValueBy_file_section_key]="/opt/${programname}/config_getValueBy_file_section_key.py";
+ProgramFiles_owners[config_getValueBy_file_section_key]="${program_user}:${program_group}";
+ProgramFiles_permissions[config_getValueBy_file_section_key]=755
+PFloadContents_config_getValueBy_file_section_key(){
+    read -r -d '' ProgramFiles_contents[config_getValueBy_file_section_key] << EOF
 import sys
 
 if (not bool(sys.argv) or len(sys.argv) < 4):
@@ -561,13 +639,15 @@ if not key in config[section].keys():
 print(config[section][key])
 
 EOF
-
+};
+ProgramFiles_loadContents[config_getValueBy_file_section_key]=PFloadContents_config_getValueBy_file_section_key;
 
 # ----- create config -----
-ProgramFiles[config_create]="/opt/${programname}/config_create.py"
-ProgramFiles_owners[config_create]="${program_user}:${program_group}"
+ProgramFiles[config_create]="/opt/${programname}/config_create.py";
+ProgramFiles_owners[config_create]="${program_user}:${program_group}";
 ProgramFiles_permissions[config_create]=755
-read -r -d '' ProgramFiles_contents[config_create] << EOF
+PFloadContents_config_create(){
+    read -r -d '' ProgramFiles_contents[config_create] << EOF
 import sys
 
 if (not bool(sys.argv) or len(sys.argv) < 3):
@@ -590,23 +670,25 @@ config[settings_section]={
     'cmd_arg1': '-la'
 }
 
-config['ubuntu18.04']= {
+config['penguin "ubuntu18.04"']= {
     'terminal_name': 'Ubuntu 18.04',
     'docker_image': 'ubuntu:18.04',
     'docker_container': 'myReusableUbuntu1804container',
     'reuse_container': 'True',
 }
-config['fedora31']=    {'terminal_name': 'Fedora 31', 'docker_image': 'fedora:31'}
-config['amazonlinux2']={'terminal_name': 'Amazon Linux 2', 'docker_image': 'amazonlinux:2'}
+config['penguin "fedora31"']=    {'terminal_name': 'Fedora 31', 'docker_image': 'fedora:31'}
+config['penguin "amazonlinux2"']={'terminal_name': 'Amazon Linux 2', 'docker_image': 'amazonlinux:2'}
 
 EOF
-
+};
+ProgramFiles_loadContents[config_create]=PFloadContents_config_create;
 
 # ----- create full config -----
-ProgramFiles[config_create_full]="/opt/${programname}/config_create_full.py"
-ProgramFiles_owners[config_create_full]="${program_user}:${program_group}"
+ProgramFiles[config_create_full]="/opt/${programname}/config_create_full.py";
+ProgramFiles_owners[config_create_full]="${program_user}:${program_group}";
 ProgramFiles_permissions[config_create_full]=755
-read -r -d '' ProgramFiles_contents[config_create_full] << EOF
+PFloadContents_config_create_full(){
+    read -r -d '' ProgramFiles_contents[config_create_full] << EOF
 import sys
 
 if (not bool(sys.argv) or len(sys.argv) < 3):
@@ -643,7 +725,7 @@ config[settings_section]={
     'cmd_arg11': 'and so on'
 }
 
-config['ubuntu18.04']= {
+config['penguin "ubuntu18.04"']= {
     'terminal_name': 'Ubuntu 18.04',
     'terminal_profile': 'default',
     'docker_image': 'ubuntu:18.04',
@@ -654,7 +736,7 @@ config['ubuntu18.04']= {
     'cmd': 'ls',
     'cmd_arg1': '-lat'
 }
-config['fedora31']=    {
+config['penguin "fedora31"']=    {
     'terminal_name': 'Fedora 31',
     'docker_image': 'fedora:31',
     'docker_container': 'myReusableFedora31container',
@@ -662,30 +744,43 @@ config['fedora31']=    {
     'docker_mount_source': '',
     'docker_mount_destination': ''
 }
-config['amazonlinux2']={
+config['penguin "amazonlinux2"']={
     'terminal_name': 'Amazon Linux 2',
     'docker_image': 'amazonlinux:2'
 }
-config['opensuse']={
+config['penguin "opensuse"']={
     'terminal_name': 'OpenSUSE',
     'docker_image': 'opensuse/tumbleweed'
 }
-config['debian10.2']={
+config['penguin "debian10.2"']={
     'terminal_name': 'Debian 10.2',
     'docker_image': 'debian:10.2'
 }
-config['linuxmint']={
+config['penguin "linuxmint"']={
     'terminal_name': 'Linux Mint',
     'docker_image': 'vcatechnology/linux-mint'
 }
-config['centos8']={
+config['penguin "centos8"']={
     'terminal_name': 'CentOS 8',
     'docker_image': 'centos:8'
 }
 
 
 EOF
+};
+ProgramFiles_loadContents[config_create_full]=PFloadContents_config_create_full;
 
+# ----- global settings -----
+ProgramFiles[global_settings]="$HOME/.${programname}.conf";
+ProgramFiles_owners[global_settings]="${program_user}:${program_group}";
+ProgramFiles_permissions[global_settings]=755
+PFloadContents_global_settings(){
+    read -r -d '' ProgramFiles_contents[global_settings] << EOF
+$appDependencies
+
+EOF
+};
+ProgramFiles_loadContents[global_settings]=PFloadContents_global_settings;
 
 
 
@@ -720,7 +815,7 @@ unquote(){
 ellipsis(){
     echo -e "    ${b}${dim}."
     echo -e "    ."
-    echo -e "    .${dim_end}${format_end}"
+    echo -e "    .${b_dim_end}"
 }
 
 # trims the given output ($1) in terms of lines
@@ -733,7 +828,7 @@ trim_output(){
         echo -e "$1" | head -n $3
         echo -e "    ${b}${dim}."
         echo -e "    ."
-        echo -e "    .${dim_end}${format_end}"
+        echo -e "    .${b_dim_end}"
     else
         echo -e "$1"
     fi
@@ -785,8 +880,7 @@ areyousure(){
     esac
 
     while :; do
-        printf "$1 $options"
-        read -p " " yn
+        read -p "$1 $options " yn
         case $yn in
             "" ) if [[ ! -z $default ]]; then return $default; fi ;;
             [Yy]* ) return 0 ;;
@@ -800,6 +894,24 @@ areyousure(){
 #example:
 #areyousure "Are you sure?" yes
 
+#prompts input while the provided function returns true (returns 0)
+readwhile(){
+    #$1 - message prompt (value passed to -p key in read)
+    #$2 - initial text (value passed to -i key in read)
+    #$3 - variable name to read into
+    #$@ - a function and arguments to execute for checking the input
+
+    [ -n "$1" ] && local prompt=("-ep" "$1") || local prompt=()
+    [ -n "$2" ] && local init=( "-i" "$2" )  || local init=()
+    local va="$3"
+    shift; shift; shift
+
+    read "${prompt[@]}" "${init[@]}" "$va"
+    while "$@"; do
+        read "${prompt[@]}" "${init[@]}" "$va"
+    done
+
+}
 
 #checks if a string variable contains any delimiters from defined in $IFS
 hasdelimiters(){
@@ -839,7 +951,7 @@ adjusttolen(){
         echo "${1::length}"
         return 0
     else
-        echo "${1}`Nspaces $((length-str_len))`"
+        echo "${1}`Nspaces $((length - str_len))`"
         return 0
     fi
 
@@ -847,6 +959,21 @@ adjusttolen(){
 #example:
 #adjusttolen "$string" 10
 
+
+# ----- getters -----
+
+#figures out the programname, in case the app file is renamed/aliased and is different from "$programname" defined here in the file
+get_programname(){
+    local p=""
+    if [[ "`which "$programname"`" == "`which "$0"`" ]] || [[ "`which "$programname"`" == "$0" ]]; then
+        p="$programname"
+    else
+        p="$0"
+    fi
+    
+    hasdelimiters "$p" && p="\"$p\""
+    echo "$p"
+}
 
 
 # ----- core -----
@@ -884,13 +1011,106 @@ create_file(){
 }
 
 install(){
-    #$1 - key ("-f" or "--force")
+    #$1 - nothing or a key ("-f" or "--force")
+    
+    if [[ "$1" == "-f" ]] || [[ "$1" == "--force" ]]; then
+        force(){
+            :
+        }
+    else
+        force(){
+            return 1
+        }
+    fi
+    #TODO: make this function work without prompts with "force" key
     
     local -i max_PF_o=`max "${ProgramFiles_owners[@]}"` #maximum number of characters
     local owners=""
     local -i length=0
 
-    echo -e "#=#=#=#=# ${b}$programname installation${b_end}${format_end} #=#=#=#=#"
+    echo -e "${b}Welcome to the $programname_fancy${b} installation!${b_end}${format_end}"
+    echo -e ""
+
+    # first guesses
+    local python="python3"
+    local docker="docker"
+    local terminal="gnome-terminal"
+    local config_file="$programname.conf"
+    
+    isunset(){
+        [ -z "${!1}" ]
+    }
+    notRefersToAFile(){
+        [ ! -f "`command -v "${!1}"`" ] && [ ! -f "${!1}" ]
+    }
+
+    if force ; then
+        # 1. python
+        if [ ! -x "`command -v "$python"`" ]; then
+            python="python"
+        fi
+        if [ ! -x "`command -v "$python"`" ]; then
+            echo -e "$ERROR: unable to locate python executable. Try installing $programname without \"$1\" key"
+            return 2
+        fi
+
+        # 2. docker
+        if [ -x "`command -v "podman"`" ]; then
+            docker="podman"
+        else
+            if [ -x "`command -v "docker"`" ]; then
+                docker="docker"
+            else
+                echo -e "$ERROR: unable to locate docker executable. Try installing $programname without \"$1\" key"
+                return 2
+            fi
+        fi
+
+        # 3. terminal
+        if [ ! -x "`command -v "$terminal"`" ]; then
+            echo -e "$ERROR: unable to locate $terminal executable. Currently gnome-terminal is the only supported terminal. Try installing $programname without \"$1\" key"
+            return 2
+        fi
+
+    else
+        # 1. python
+        if [ -n "`command -v "$python"`" ]; then
+            readwhile "Enter a path to a python executable (must be >3.6): " "$python" python notRefersToAFile python
+        else
+            readwhile "Enter a path to a python executable (must be >3.6): " ""        python notRefersToAFile python
+        fi
+
+        # 2. docker
+        if [[ -n "`command -v podman`" ]] && \
+        echo -e "\nIt looks like you have podman installed. $programname supports it as well." && \
+        areyousure "Would you like to use podman instead of docker?" yes; then       
+            readwhile "Enter a path to a podman executable (must be >2.0.2): " "podman" docker notRefersToAFile docker
+        else
+            if [ -n "`command -v "$docker"`" ]; then
+                readwhile "Enter a path to a docker executable (must be >19.03.0): " "$docker" docker notRefersToAFile docker
+            else
+                readwhile "Enter a path to a docker executable (must be >19.03.0): " ""        docker notRefersToAFile docker
+            fi
+        fi
+
+        # 3. terminal
+        echo -e "\nCurrently gnome-terminal is the only supported terminal"
+        if [ -n "`command -v gnome-terminal`" ]; then
+            readwhile "Enter a path to a gnome-terminal executable (must be >3.27.0): " "$terminal" terminal notRefersToAFile terminal
+        else
+            readwhile "Enter a path to a gnome-terminal executable (must be >3.27.0): " ""          terminal notRefersToAFile terminal
+        fi
+
+    fi
+
+    local value=""
+    for dependency in "python" "docker" "terminal" "config_file"; do
+        value="${!dependency}"
+        value="\"${value//\"/\\\"}\""
+        appDependencies="${appDependencies//"%$dependency%"/"$value"}"
+    done
+
+
     echo -e ""
     echo -e "During the installation the following files will be created/rewritten:"
     echo -e ""
@@ -903,17 +1123,15 @@ install(){
     if [[ "$1" == "-f" ]] || [[ "$1" == "--force" ]]; then
         : #proceed automatically without prompt
     else
-        areyousure "Do you want to install $programname?" yes
-        [[ $? -eq 0 ]] && : || return 1
+        areyousure "Do you want to install $programname?" yes || return 1
         echo -e ""
-        #echo "Do you want to install $programname?"
-        # select yn in "Yes" "No"; do
-        #     case $yn in
-        #         Yes ) break;;
-        #         No ) return 1;;
-        #     esac
-        # done
     fi
+
+    echo -e "installing $programname..."
+
+    for func in "${ProgramFiles_loadContents[@]}"; do
+        [ -n "$func" ] && "$func"
+    done
 
     for file in "${!ProgramFiles[@]}"; do
         filepath="${ProgramFiles[$file]}"
@@ -921,14 +1139,14 @@ install(){
 
         mkdir -p "$dir" 2>/dev/null
         if [[ ! -d "$dir" ]]; then
-            echo "ERROR: permission denied creating \"$dir\" directory. Try installing the program as a root"
+            echo -e "$ERROR: permission denied creating \"$dir\" directory. Try installing the program as a root"
             return 2
         fi
 
         touch "$filepath" 2>/dev/null
         ec="$?"
         if [[ "$ec" -ne 0 || ! -f "$filepath" ]]; then
-            echo "ERROR: permission denied creating \"$filepath\" file. Try installing the program as a root"
+            echo -e "$ERROR: permission denied creating \"$filepath\" file. Try installing the program as a root"
             return 2
         fi
         echo "${ProgramFiles_contents[$file]}" > "$filepath"
@@ -939,7 +1157,7 @@ install(){
         #ls -la "$filepath"
 
     done
-
+    
     ls -la "${ProgramFiles[@]}"
     echo -e ""
     echo "installation finished successfuly"
@@ -957,8 +1175,7 @@ install(){
 #=#=#=#=#= interface =#=#=#=#=#
 declare -A InterfaceText=()
 
-hasdelimiters "$0" && p="\"$0\"" || p="$0"
-
+declare p="`get_programname`"
 InterfaceText[default]="${b}$programname v$version${format_end} (${revision})
 This is free software: you are free to change and redistribute it.
 There is NO WARRANTY.
@@ -1007,6 +1224,7 @@ while :; do
             if [[ $ec -eq 2 ]]; then
                 exit_ ${ExitCode[installationerror]}
             else
+                bash "${ProgramFiles[autocompletion]}"
                 exit_ 0
             fi
             break
@@ -1024,7 +1242,7 @@ done
 
 
 
-exit
+exit_ 0
 
 
 
@@ -1064,20 +1282,24 @@ exit
 #=#=#=#=#= variables =#=#=#=#=#
 
 declare -r programname="penguinsOnWhale"
-declare -r version="1.0"
-declare -r revision="2020.05.25"
+declare -r version="2.0"
+declare -r revision="2020.08.29"
 declare -r source="https://github.com/Kukuster/penguinsOnWhale"
 
 
 # ----- dependencies -----
-declare -r python3="python3"
-declare -r docker="docker"
-declare -r terminal="gnome-terminal"
-declare -r config_file="$programname.conf"
+#declare dependencies_section="Dependencies"
+#dependencies are declared with default values, but rewritten later with data from global_settings config file
+declare python="python3"
+declare docker="docker"
+declare terminal="gnome-terminal"
+declare config_file="$programname.conf"
 
 
 # ----- config keys and default values -----
-declare -r config_settings_section="Global settings"
+declare -r config_settingsSectionName="Settings"
+declare -r config_penguinSectionTitle="penguin"
+declare -r config_eggSectionTitle="egg"
 declare -A ConfigSettings_key=()
 declare -A ConfigSettings_defaultvalue=()
 declare -A ConfigSettings_value=()
@@ -1106,7 +1328,6 @@ ConfigSettings_value[terminal_profile]=""
 ConfigSettings_key[tab]="open_terminal_as_tab"
 ConfigSettings_defaultvalue[tab]="True"
 ConfigSettings_value[tab]=""
-openAsTabOrWindow="--window"
 
 ConfigSettings_key[docker_mount_source]="docker_mount_source"
 ConfigSettings_defaultvalue[docker_mount_source]=""
@@ -1117,7 +1338,7 @@ ConfigSettings_defaultvalue[docker_mount_destination]=""
 ConfigSettings_value[docker_mount_destination]=""
 
 ConfigSettings_key[cmd]="cmd"
-ConfigSettings_defaultvalue[cmd]=""
+ConfigSettings_defaultvalue[cmd]="sh"
 ConfigSettings_value[cmd]=""
 
 ConfigSettings_key[cmd_arg]="cmd_arg"
@@ -1145,6 +1366,9 @@ ExitCode[cannotresolveimage]=4
 ExitCode[failedtocreateconfig]=5
 ExitCode[failedtoreinstall]=6
 ExitCode[unknownarg]=7
+ExitCode[noimagesprovided]=8
+ExitCode[configerror]=9
+ExitCode[nodependencies]=10
 
 
 # ----- program files -----
@@ -1154,59 +1378,33 @@ ProgramFiles[penguinsOnWhale]="/usr/local/bin/${programname}"
 ProgramFiles[autocompletion]="/etc/bash_completion.d/${programname}"
 ProgramFiles[ini_interface]="/opt/${programname}/ini_interface.py"
 ProgramFiles[ini_interface_ro]="/opt/${programname}/ini_interface_ro.py"
-ProgramFiles[config_get_sections]="/opt/${programname}/config_get_sections.py"
-ProgramFiles[config_get_value_from_section]="/opt/${programname}/config_get_value_from_section.py"
+ProgramFiles[config_getSections]="/opt/${programname}/config_getSections.py"
+ProgramFiles[config_getValueBy_file_section_key]="/opt/${programname}/config_getValueBy_file_section_key.py"
 ProgramFiles[config_create]="/opt/${programname}/config_create.py"
 ProgramFiles[config_create_full]="/opt/${programname}/config_create_full.py"
+ProgramFiles[global_settings]="$HOME/.${programname}.conf";
 
-
-# ----- program options (arguments) -----
-declare -A ProgramOptions=()
-declare -A ProgramOptions_description=()
-
-ProgramOptions[help]="--help"
-ProgramOptions_description[help]="displays this message"
-
-ProgramOptions[version]="--version"
-ProgramOptions_description[version]="displays general info about the program"
-
-ProgramOptions[reinstall]="--reinstall"
-ProgramOptions_description[reinstall]="runs \"${ProgramFiles[installator]}\" script"
-
-ProgramOptions[all]="--all"
-ProgramOptions_description[all]="runs all images defined in the config file as per configuration"
-
-ProgramOptions[createconfig]="--create-config"
-ProgramOptions_description[createconfig]="creates new config file"
-
-ProgramOptions[createconfigfull]="--create-config-full"
-ProgramOptions_description[createconfigfull]="creates new config file with all possible configs specified"
-
-ProgramOptions[printoptions]="--print-options"
-ProgramOptions_description[printoptions]=""
-
-ProgramOptions[here]="--here"
-ProgramOptions_description[here]=""
-
-ProgramOptions[herenocheck]="--here-nocheck"
-ProgramOptions_description[herenocheck]=""
 
 
 # ----- formatting -----
 #https://misc.flogisoft.com/bash/tip_colors_and_formatting
+#https://askubuntu.com/questions/528928/how-to-do-underline-bold-italic-strikethrough-color-background-and-size-i/985386#985386
 declare -r format_end='\e[0m'
 
 declare -r b='\e[1m'
-declare -r b_end='\e[21m'
 declare -r dim='\e[2m'
+declare -r b_dim_end='\e[22m'
+declare -r b_end='\e[22m'
 declare -r dim_end='\e[22m'
-declare -r u='\e[4m'
-declare -r u_end='\e[24m'
+declare -r u='\e[4:1m'
+declare -r uu='\e[4:2m'
+declare -r cu='\e[4:3m'
+declare -r u_end='\e[4:0m'
 declare -r blink='\e[5m'
 declare -r blink_end='\e[25m'
 
 declare -r color_end='\e[39m'
-declare -r black='\e[39m'
+declare -r black='\e[30m'
 declare -r red='\e[31m'
 declare -r green='\e[32m'
 declare -r yellow='\e[33m'
@@ -1221,13 +1419,13 @@ declare -r lightyellow='\e[93m'
 declare -r lightblue='\e[94m'
 declare -r lightmagenta='\e[95m'
 declare -r lightcyan='\e[96m'
-declare -r lightwhite='\e[97m'
+declare -r white='\e[97m'
 
-declare -r quote_str="${b}${dim}<<${dim_end}${format_end}"
-declare -r unquote_str="${b}${dim}>>${dim_end}${format_end}"
+declare -r quote_str="${b}${dim}<<${b_dim_end}"
+declare -r unquote_str="${b}${dim}>>${b_dim_end}"
 
-declare -r ERROR="${b}${red}ERROR${color_end}${format_end}"
-declare -r WARNING="${b}${yellow}WARNING${color_end}${format_end}"
+declare -r ERROR="${b}${red}ERROR${color_end}${b_end}"
+declare -r WARNING="${b}${yellow}WARNING${color_end}${b_end}"
 
 
 
@@ -1263,7 +1461,7 @@ unquote(){
 ellipsis(){
     echo -e "    ${b}${dim}."
     echo -e "    ."
-    echo -e "    .${dim_end}${format_end}"
+    echo -e "    .${b_dim_end}"
 }
 
 # trims the given output ($1) in terms of lines
@@ -1276,7 +1474,7 @@ trim_output(){
         echo -e "$1" | head -n $3
         echo -e "    ${b}${dim}."
         echo -e "    ."
-        echo -e "    .${dim_end}${format_end}"
+        echo -e "    .${b_dim_end}"
     else
         echo -e "$1"
     fi
@@ -1342,6 +1540,18 @@ areyousure(){
 }
 #example:
 #areyousure "Are you sure?" yes
+
+#checks if the first argument is present in the list of arguments after (if an element is in array)
+containsElement() {
+  local e match="$1"
+  shift
+  for e; do [[ "$e" == "$match" ]] && return 0; done
+  return 1
+  #returns 0 if the first argument is found in the given list
+  #returns 1 if not
+}
+#example:
+#containsElement "$el" "${arr[@]}" || arr+=( "$el" ) 
 
 #checks if a string variable contains any delimiters from defined in $IFS
 hasdelimiters(){
@@ -1451,7 +1661,7 @@ adjusttolen(){
         echo "${1::length}"
         return 0
     else
-        echo "${1}`Nspaces $((length-str_len))`"
+        echo "${1}`Nspaces $((length - str_len))`"
         return 0
     fi
 
@@ -1505,18 +1715,78 @@ get_programname(){
 }
 
 
+
+
+#=#=#=#=#= interface =#=#=#=#=#
+
+# ----- commands and options (arguments) -----
+declare -A ProgramOptions=()
+declare -A ProgramOptions_short=()
+declare -A ProgramOptions_description=()
+declare -A Commands=()
+declare -A Commands_description=()
+declare p="`get_programname`"
+
+ProgramOptions[help]="help"
+ProgramOptions_short[help]="h"
+ProgramOptions_description[help]="as a first keyword, displays this message. Run '$p <COMMAND> --help' for more info on a command"
+
+ProgramOptions[version]="version"
+ProgramOptions_short[version]="v"
+ProgramOptions_description[version]="displays general info about the program"
+
+Commands[run]="run"
+Commands_description[run]="invokes a terminal and starts a docker container for each specified image"
+
+Commands[all]="all"
+Commands_description[all]="invokes a terminal and starts a docker container for all images in the config file"
+
+Commands[here]="here"
+Commands_description[here]="starts a single docker container in the current terminal"
+
+Commands[herenocheck]="here-nocheck"
+Commands_description[herenocheck]=""
+
+Commands[createconfig]="create-config"
+Commands_description[createconfig]="creates a new example config file in the current directory"
+
+Commands[createconfigfull]="create-config-full"
+Commands_description[createconfigfull]="creates a new extensive example config file, demonstrating all available features"
+
+Commands[reinstall]="reinstall"
+Commands_description[reinstall]="runs an installation script located at \"${ProgramFiles[installator]}\""
+
+Commands[printcommands]="print-commands"
+Commands_description[printcommands]=""
+
+Commands[printoptions]="print-options"
+Commands_description[printoptions]=""
+
+Commands[printcommandoptions]="print-command-options"
+Commands_description[printcommandoptions]=""
+
+Commands[printimages]="print-images"
+Commands_description[printimages]=""
+
+CommandOptions[help]="help"
+CommandOptions_short[help]="h"
+
+
+
+#=#=#=#=#= functions =#=#=#=#=#
+
 # ----- core -----
 
 #is meant to be called in global scope of this script (not in a subshell)
 #exits with error if the a given file is missing, providing list of missing ProgramFiles
 #does nothing if file is present
-verify_essential_file(){
+verify_essentialFile(){
     #$1 - path to a file
     if [[ -f "$1" ]]; then
         return 0
     else
-        declare -A MissingFiles=()
-        declare hasMissingFiles=""
+        local -A MissingFiles=()
+        local hasMissingFiles=""
         for file in "${!ProgramFiles[@]}"; do
             if [ ! -f "${ProgramFiles["$file"]}" ]; then
                 MissingFiles["$file"]="${ProgramFiles["$file"]}"
@@ -1524,8 +1794,8 @@ verify_essential_file(){
             fi
         done
 
-        if [[ ! -z "$hasMissingFiles" ]]; then
-            echo -e "$ERROR: the following essencial program files are missing:"
+        if [[ -n "$hasMissingFiles" ]]; then
+            echo -e "$ERROR: the following essential program files are missing:"
             echo -e ""
             for filepath in "${MissingFiles[@]}"; do
                 echo -e " ${dim}•${dim_end} \"${filepath}\""
@@ -1536,7 +1806,7 @@ verify_essential_file(){
 
             echo -e "$programname cannot run without those, try reinstalling it:"
             quote
-            echo -e "$p ${ProgramOptions[reinstall]}"
+            echo -e "$p ${Commands[reinstall]}"
             unquote
             exit_ ${ExitCode[noprogramfiles]}
         fi
@@ -1548,7 +1818,7 @@ verify_essential_file(){
 #is meant to be called in global scope of this script (not in a subshell)
 #exits with error if a config file is missing
 #does nothing if file is present
-verify_config_file(){
+verify_configFile(){
     if [[ -f "$config_file" ]]; then
         return 0
     else
@@ -1557,34 +1827,122 @@ verify_config_file(){
         echo -e ""
         echo -e "You can create a new config file:"
         quote
-        echo -e "$p ${ProgramOptions[createconfig]}"
+        echo -e "$p ${Commands[createconfig]}"
         unquote
         exit_ ${ExitCode[noconf]}
 
     fi
 }
 
+#is meant to be called in global scope of this script (not in a subshell)
+#exits with error if any dependency file is missing or not executable
+#does nothing otherwise
+verify_dependency(){
+    #$@ - names of global dependency variables
+    
+    local file=""
+    local val=""
+    local -A MissingDependencies=()
+    local hasMissingDependencies=""
+    for name in "$@"; do
+        val="${!name}"
+        file="`command -v "$val"`"
+        if [[ ! -x  "$file" ]]; then
+            [ -n "$file" ] && MissingDependencies["$name"]="$file" || MissingDependencies["$name"]="$val"
+            hasMissingDependencies=True
+        fi
+    done
+
+    if [[ -n "$hasMissingDependencies" ]]; then
+        echo -e "$ERROR: some essential dependencies are either missing or not executable:"
+        echo -e ""
+
+        local presentpath=""
+        for name in "${!MissingDependencies[@]}"; do
+            echo -e " ${dim}•${dim_end} ${b}"$name"${b_end} ${dim}\"${dim_end}${MissingDependencies["$name"]}${dim}\"${dim_end}"
+        done
+        echo -e ""
+
+        echo -e "Make sure values in the file \"${ProgramFiles[global_settings]}\" refer to appropriate executable programs"
+        
+        p="`get_programname`"
+        echo -e ""
+        echo -e "Or try reinstalling $programname:"
+        quote
+        echo -e "$p ${Commands[reinstall]}"
+        unquote
+
+        exit_ ${ExitCode[nodependencies]}
+
+    fi
+}
+
+# strips section type (e.g. `penguin "ubuntu 18.04"` --> `ubuntu 18.04` )
+config_stripSectionType(){
+    #$1 - section type (e.g. "penguin", "egg")
+    #$2 - full section name
+
+    local type="$1"
+    local full="$2"
+    local strip_left=""
+    local strip_right=""
+
+    strip_left="${full#"$type \""}"
+    [[ "$strip_left" == "$full" ]] && return 1
+
+    strip_right="${strip_left%"\""}"
+    [[ "$strip_right" == "$strip_left" ]] && return 1
+
+    echo "$strip_right"
+
+    # returns 1 if the given string is of a wrong format
+}
+
 # reads config sections names into an Array with the given name
-config_read_sections_into_array(){
-    #$1 - name of an Array variable to populate with section names 
+config_readSectionsIntoArray(){
+    #$1 - name of an Array variable to populate with section names
+    #$2 - section type (e.g. "penguin" or "egg")
+    #TODO: parse section name
 
     isArray "$1" || ( hasdelimiters "$1" && return 1 )
 
-    local sections="`"$python3" "${ProgramFiles[config_get_sections]}" "$config_file" "$config_settings_section"`"
+    local sections="`"$python" "${ProgramFiles[config_getSections]}" "$config_file" "$config_settingsSectionName"`"
 
-    # reads lines from a string variable
-    while IFS= read -r line; do
-        if [[ -n "$line" ]]; then
-            line="${line//\"/\\\"}" # escapes double quotes
-            eval "$1+=( \"$line\" )"
-        fi
-    done <<< "$sections"
+    if [ -n "$2" ]; then
+        # reads lines from a string variable
+        while IFS= read -r line; do
+            if [[ -n "$line" ]]; then
+                line="`config_stripSectionType "$2" "$line"`"
+                [ $? -eq 0 ] && eval "$1+=( \"$line\" )"
+            fi
+        done <<< "$sections"
+    else
+        # reads lines from a string variable
+        while IFS= read -r line; do
+            if [[ -n "$line" ]]; then
+                eval "$1+=( \"$line\" )"
+            fi
+        done <<< "$sections"
+    fi
 
-    #returns 1 if the given strign contains delimiters
+    #returns 1 if the given string contains delimiters
     #this function modifies state: it rewrites or creates a variable with the name given as the first argument
 }
 
-config_get_setting(){
+config_getValueBy_file_section_key(){
+    #$1 - file path
+    #$2 - section name
+    #$3 - key
+    "$python" "${ProgramFiles[config_getValueBy_file_section_key]}"  "$1" "$2" "$3"
+}
+
+config_getValueBy_section_key(){
+    #$1 - section name
+    #$2 - key
+    config_getValueBy_file_section_key "$config_file" "$1" "$2"
+}
+
+config_getSetting(){
     #$1 - setting name (key)
     #$2 - index (for numerated keys)
 
@@ -1593,14 +1951,7 @@ config_get_setting(){
         return 1
     fi
     
-    local output=`config_get_value_from_section "$config_settings_section" "$key"`
-    
-    if [[ ! -z "$output" ]]; then
-        echo "$output"
-        return 0
-    fi
-
-    output=`config_get_value_from_section "$config_settings_section" "${key}${2}"`
+    local output=`config_getValueBy_section_key "$config_settingsSectionName" "${key}${2}"`
 
     if [[ ! -z "$output" ]]; then
         echo "$output"
@@ -1611,122 +1962,26 @@ config_get_setting(){
     
 }
 
-config_get_value_from_section(){
-    #$1 - section name
-    #$2 - key
-    "$python3" "${ProgramFiles[config_get_value_from_section]}"  "$config_file" "$1" "$2"
-}
-
-#creates a full or short template config file with prompts
-#should be called in the global scope (not in a subshell)
-config_create(){
-    #$1 - either equals "full" or doens't matter
-
-    if [[ -f "$config_file" ]]; then
-        areyousure "Do you want to erase your current config file and replace in with a new template?" no
-        [[ $? -eq 0 ]] && : || return 1
-    fi
-    echo "" > "$config_file"
-
-    [[ "$1" == "full" ]] && local filepy="${ProgramFiles[config_create_full]}" || local filepy="${ProgramFiles[config_create]}"
-
-    "$python3" "$filepy" "$config_file" "$config_settings_section"
-    local ec=$?    
-    if [[ $ec -eq 0 ]] && [[ -f "$config_file" ]]; then
-        echo -e "a new config file \"$config_file\" has been generated"
-        return 0
-    else
-        echo -e "$ERROR: something went wrong or a config file \"$config_file\" has not been created"
-        return 1
-    fi
-}
-
 # reads values from the config file into the global variables "ConfigSettings_value"
-config_read_settings(){
+config_readSettings(){
 
-    # ----- docker_images_prefix -----
-    local prefix="`config_get_setting "${ConfigSettings_key[docker_images_prefix]}"`"
-    if [ -n "$prefix" ]; then
-        ConfigSettings_value[docker_images_prefix]="$prefix"
-    else
-        ConfigSettings_value[docker_images_prefix]="${ConfigSettings_defaultvalue[docker_images_prefix]}"
-    fi
-
-    # ----- docker_images_suffix -----
-    local suffix="`config_get_setting "${ConfigSettings_key[docker_images_suffix]}"`"
-    if [ -n "$suffix" ]; then
-        ConfigSettings_value[docker_images_suffix]="$suffix"
-    else
-        ConfigSettings_value[docker_images_suffix]="${ConfigSettings_defaultvalue[docker_images_suffix]}"
-    fi
-
-    # ----- docker_containers_prefix -----
-    local prefix="`config_get_setting "${ConfigSettings_key[docker_containers_prefix]}"`"
-    if [ -n "$prefix" ]; then
-        ConfigSettings_value[docker_containers_prefix]="$prefix"
-    else
-        ConfigSettings_value[docker_containers_prefix]="${ConfigSettings_defaultvalue[docker_containers_prefix]}"
-    fi
-
-    # ----- docker_containers_suffix -----
-    local suffix="`config_get_setting "${ConfigSettings_key[docker_containers_suffix]}"`"
-    if [ -n "$suffix" ]; then
-        ConfigSettings_value[docker_containers_suffix]="$suffix"
-    else
-        ConfigSettings_value[docker_containers_suffix]="${ConfigSettings_defaultvalue[docker_containers_suffix]}"
-    fi
-
-    # ----- terminal_profile -----
-    local profile="`config_get_setting "${ConfigSettings_key[terminal_profile]}"`"
-    if [ -n "$profile" ]; then
-        ConfigSettings_value[terminal_profile]="$profile"
-    else
-        ConfigSettings_value[terminal_profile]="${ConfigSettings_defaultvalue[terminal_profile]}"
-    fi
-
-    # ----- open_terminal_as_tab -----
-    local tab="`config_get_setting "${ConfigSettings_key[tab]}"`"
-    if [ -n "$tab" ]; then
-        ConfigSettings_value[tab]="$tab"
-    else
-        ConfigSettings_value[tab]="${ConfigSettings_defaultvalue[tab]}"
-    fi
-
-
-    # if mount paths on the host and on a docker image is specified, add "--mount" to "docker run" arguments
-    # ----- docker_mount_source -----
-    local mount_source="`config_get_setting "${ConfigSettings_key[docker_mount_source]}"`"
-    if [ -n "$mount_source" ]; then
-        ConfigSettings_value[docker_mount_source]="$mount_source"
-    else
-        ConfigSettings_value[docker_mount_source]="${ConfigSettings_defaultvalue[docker_mount_source]}"
-    fi
-
-    # ----- docker_mount_destination -----
-    local mount_destination="`config_get_setting "${ConfigSettings_key[docker_mount_destination]}"`"
-    if [ -n "$mount_destination" ]; then
-        ConfigSettings_value[docker_mount_destination]="$mount_destination"
-    else
-        ConfigSettings_value[docker_mount_destination]="${ConfigSettings_defaultvalue[docker_mount_destination]}"
-    fi
-
+    for key in "${!ConfigSettings_key[@]}"; do
+        local val="`config_getSetting "$key"`"
+        if [ -n "$val" ]; then
+            ConfigSettings_value["$key"]="$val"
+        else
+            ConfigSettings_value["$key"]="${ConfigSettings_defaultvalue[key]}"
+        fi
+    done
 
     # get the command and arguments to execute on a docker container
-    # ----- cmd -----
-    local cmd="`config_get_setting "${ConfigSettings_key[cmd]}"`"
-    if [ -n "$cmd" ]; then
-        ConfigSettings_value[cmd]="$cmd"
-    else
-        ConfigSettings_value[cmd]="${ConfigSettings_defaultvalue[cmd]}"
-    fi
-
     if [ -n "${ConfigSettings_value[cmd]}" ]; then
         # ----- args -----
         local arg
         local -i i=0
         while :; do
             i=$((i+1))
-            arg="`config_get_setting "${ConfigSettings_key[cmd_arg]}" ${i}`"
+            arg="`config_getSetting cmd_arg ${i}`"
             if [[ -z "$arg" ]]; then
                 break
             else
@@ -1741,6 +1996,43 @@ config_read_settings(){
 
 }
 
+
+
+#creates a full or short template config file with prompts
+#should be called in the global scope (not in a subshell)
+config_create(){
+    #$1 - either equals "full" or doens't matter
+
+    if [[ -f "$config_file" ]]; then
+        areyousure "Do you want to erase your current config file and replace it with a new template?" no
+        [[ $? -eq 0 ]] && : || return 1
+    fi
+    echo "" > "$config_file"
+
+    [[ "$1" == "full" ]] && local filepy="${ProgramFiles[config_create_full]}" || local filepy="${ProgramFiles[config_create]}"
+
+    "$python" "$filepy" "$config_file" "$config_settingsSectionName"
+    local ec=$?    
+    if [[ $ec -eq 0 ]] && [[ -f "$config_file" ]]; then
+        echo -e "a new config file \"$config_file\" has been generated"
+        return 0
+    else
+        echo -e "$ERROR: something went wrong or a config file \"$config_file\" has not been created"
+        return 1
+    fi
+}
+
+# reads dependencies from global_settings file into the global variables
+config_read_dependencies(){
+    source "${ProgramFiles[global_settings]}"
+    # if [ -f "${ProgramFiles[global_settings]}" ]; then
+    # python="`     config_getValueBy_file_section_key "${ProgramFiles[global_settings]}" "$dependencies_section" "python"     `"
+    # docker="`     config_getValueBy_file_section_key "${ProgramFiles[global_settings]}" "$dependencies_section" "docker"     `"
+    # terminal="`   config_getValueBy_file_section_key "${ProgramFiles[global_settings]}" "$dependencies_section" "terminal"   `"
+    # config_file="`config_getValueBy_file_section_key "${ProgramFiles[global_settings]}" "$dependencies_section" "config_file"`"
+    # fi
+}
+
 install(){
     #$@ - keys
     "${ProgramFiles[installator]}" --install "$@"
@@ -1749,8 +2041,9 @@ install(){
 
 }
 
-run_on(){
-    #$1 - docker image (section name in a config file)
+# invokes new terminal and runs runPenguin in it
+spawnTerminalwPenguin(){
+    #$1 - penguin (from section name in the config file)
 
     local tab="${ConfigSettings_value[tab]}"
     if [[ -z "$tab" ]] || meansYes "$tab" ; then
@@ -1759,14 +2052,14 @@ run_on(){
         tab="--window"
     fi
 
-    local image="$1"
+    local penguin="$1"
 
-    local terminal_name="`config_get_value_from_section "$image" "${ConfigImage_key[terminal_name]}"`"
+    local terminal_name="`config_getValueBy_section_key "$penguin" "${ConfigImage_key[terminal_name]}"`"
     if [[ -z "$terminal_name" ]]; then
-        terminal_name="$image"
+        terminal_name="$penguin"
     fi
 
-    local terminal_profile="`config_get_value_from_section "$image" "${ConfigImage_key[terminal_profile]}"`"
+    local terminal_profile="`config_getValueBy_section_key "$penguin" "${ConfigImage_key[terminal_profile]}"`"
     if [[ -n "$terminal_profile" ]]; then
         terminal_profile="--profile=${terminal_profile}"
     elif [[ -n "${ConfigSettings_value[terminal_profile]}" ]]; then
@@ -1776,40 +2069,67 @@ run_on(){
     fi
 
 
-    "$terminal" "$tab" "$terminal_profile" --title="$terminal_name" --active -- "$0" "${ProgramOptions[herenocheck]}" "$image"
+    "$terminal" "$tab" "$terminal_profile" --title="$terminal_name" --active -- "$0" "${Commands[herenocheck]}" "$penguin"
 
 }
 
-#executes in invoked terminal
-CMD(){
-    #$1 - docker image (section name in a config file)
+#executes here (in the current terminal)
+runPenguin(){
+    #$1 - penguin (from section name in the config file)
 
-    local image="$1"
+    local penguin="$1"
 
-    # an image (a config section name) has to be specified for this command
-    if [[ -z "$image" ]]; then
-        echo "$programname --here <image>"
+    # a penguin has to be specified for this command
+    if [[ -z "$penguin" ]]; then
         exit_ ${ExitCode[cannotresolveimage]}
     fi
+
+    local penguinSectionName="$config_penguinSectionTitle \"$penguin\""
     
-    # figures out actual docker image name from the config
-    local image_docker="`config_get_value_from_section "$image" "${ConfigImage_key[docker_image]}"`"
-    if [[ -z "$image_docker" ]]; then
-        exit_ ${ExitCode[cannotresolveimage]}
+
+    # figures out docker image name from the config
+    local image_name="`config_getValueBy_section_key "$penguinSectionName" "${ConfigImage_key[docker_image]}"`"
+
+    # figures out docker conteiner name from the config
+    local container_name="`config_getValueBy_section_key "$penguinSectionName" "${ConfigImage_key[docker_container]}"`"
+    if [[ -z "$container_name" ]]; then
+        # if no container_name provided, make it up
+        container_name="penguin_${image_name}"
+
+        # but if it is not a proper docker container name ...
+        if [[ ! "$container_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]]; then
+            # ... then replace any wrong character with an underscore
+            container_name="`replaceAllCharsNotMatching "$container_name" [a-zA-Z0-9_.-] _ `"
+        fi
+
     fi
 
-    image_docker="${ConfigSettings_value[docker_images_prefix]}${image_docker}${ConfigSettings_value[docker_images_suffix]}"
+    local reuse_container="`config_getValueBy_section_key "$penguinSectionName" "${ConfigImage_key[reuse_container]}"`"
+
+    
+    # either docker image or a reusable container name has to be specified in order to run a penguin
+    if [ -z "$image_name" ] && { [ -z "$container_name" ] || ! meansYes "$reuse_container"; }; then
+        exit_ ${ExitCode[configerror]}
+    fi
+
+
+    # adds prefix and suffix to an image name
+    local image_name_full="${ConfigSettings_value[docker_images_prefix]}${image_name}${ConfigSettings_value[docker_images_suffix]}"
+
+    # adds prefix and suffix to a container name
+    local container_name_full="${ConfigSettings_value[docker_containers_prefix]}${container_name}${ConfigSettings_value[docker_containers_suffix]}"
+
 
     # figures out terminal name from the config
-    local terminal_name="`config_get_value_from_section "$image" "${ConfigImage_key[terminal_name]}"`"
+    local terminal_name="`config_getValueBy_section_key "$penguinSectionName" "${ConfigImage_key[terminal_name]}"`"
     if [[ -z "$terminal_name" ]]; then
-        terminal_name="$image"
+        terminal_name="$penguin"
     fi
 
     # if mount paths on the host and on a docker image is specified, add "--mount" to "docker run" arguments
     local mount=()
-    local this_mount_source="`config_get_value_from_section "$image" "${ConfigImage_key[docker_mount_source]}"`"
-    local this_mount_destination="`config_get_value_from_section "$image" "${ConfigImage_key[docker_mount_destination]}"`"
+    local this_mount_source="`config_getValueBy_section_key "$penguinSectionName" "${ConfigImage_key[docker_mount_source]}"`"
+    local this_mount_destination="`config_getValueBy_section_key "$penguinSectionName" "${ConfigImage_key[docker_mount_destination]}"`"
 
 
     # checks if the mount points defined specifically for this image
@@ -1822,29 +2142,15 @@ CMD(){
         mount+=( "type=bind,src=${ConfigSettings_value[docker_mount_source]},dst=${ConfigSettings_value[docker_mount_destination]}" )
     fi
 
-    # figures out conteiner name
-    local container_name="`config_get_value_from_section "$image" "${ConfigImage_key[docker_container]}"`"
-    if [[ -z "$container_name" ]]; then
-        container_name="penguin_${image_docker}"
-
-        # but if it is not a proper docker container name ...
-        if [[ ! "$container_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]]; then
-            # ... then replace any wrong character with an underscore
-            container_name="`replaceAllCharsNotMatching "$container_name" [a-zA-Z0-9_.-] _ `"
-        fi
-
-    fi
-
-
     # checks if the command defined specifically for this image
-    local cmd="`config_get_value_from_section "$image" "${ConfigImage_key[cmd]}"`"
+    local cmd="`config_getValueBy_section_key "$penguinSectionName" "${ConfigImage_key[cmd]}"`"
     local args=()
     if [ -n "$cmd" ]; then
         local arg
         local -i i=0
         while :; do
             i=$((i+1))
-            arg="`config_get_value_from_section "$image" "${ConfigImage_key[cmd_arg]}${i}"`"
+            arg="`config_getValueBy_section_key "$penguinSectionName" "${ConfigImage_key[cmd_arg]}${i}"`"
             if [[ -z "$arg" ]]; then
                 break
             else
@@ -1860,30 +2166,28 @@ CMD(){
     fi
 
 
-    # applies prefix and suffix for a container name
-    container_name="${ConfigSettings_value[docker_containers_prefix]}${container_name}${ConfigSettings_value[docker_containers_suffix]}"
-
 
     # finally, depending on whether to reuse a container or not, run a docker container 
-    local reuse_container="`config_get_value_from_section "$image" "${ConfigImage_key[reuse_container]}"`"
         
-    if meansYes "$reuse_container"; then
-        local containerid="`docker ps -aq -f name="^${container_name}$"`"
+    if meansYes "$reuse_container" && [[ -n "$container_name" ]]; then
+        local containerid="`"$docker" ps -aq -f name="^${container_name_full}$"`"
         if [ -n "$containerid" ]; then
-            "$docker" start -i "$containerid"
+            echo -e "${dim}reusing container ${b}${container_name_full}${b_dim_end}${dim} $containerid${b_dim_end}"
+            echo -e ""
+            "$docker" start -ia "$containerid"
             ec=$?
         else
-            "$docker" run -it --name "$container_name" --hostname "`replacedelimiters "$terminal_name" _`" "${mount[@]}" "$image_docker" "$cmd" "${args[@]}"
+            "$docker" run -it --name "$container_name_full" --hostname "`replacedelimiters "$terminal_name" _`" "${mount[@]}" "$image_name_full" "$cmd" "${args[@]}"
             ec=$?
         fi
 
     else
-        "$docker" run -it --name "$container_name" --hostname "`replacedelimiters "$terminal_name" _`" "${mount[@]}" --rm "$image_docker"  "$cmd" "${args[@]}"
+        "$docker" run -it --name "$container_name_full" --hostname "`replacedelimiters "$terminal_name" _`" "${mount[@]}" --rm "$image_name_full"  "$cmd" "${args[@]}"
         ec=$?
     fi
 
     echo -e ""
-    echo -e "${dim}${b}docker execution finished with exit code $ec, sleeping... [enter ^C to terminate]${format_end}"
+    echo -e "${dim}${b}docker execution finished with exit code $ec, sleeping... [enter ^C to terminate]${b_dim_end}"
     sleep infinity
     exit_ "$ec"
 
@@ -1895,20 +2199,37 @@ CMD(){
 #=#=#=#=#= interface =#=#=#=#=#
 declare -A InterfaceText=()
 
-p="`get_programname`"
-declare -i max_PO=`max "${ProgramOptions[@]}"`
+declare -i col1len
+col1len=`max "${Commands[@]}"`
 
-InterfaceText[help]="Usage: $p [--here] <image>
-  or:  $p [OPTION]
+InterfaceText[help]="Usage: $p <COMMAND> [<image> [<image> [...]]]
+  or:  $p [<option>]
 
-Runs a given docker <image> in a new terminal identified by section name in the config file as per configuration.
-When used with --here key, runs in current terminal without invoking new one
-
- Options:
+Commands:
 "
-for opt in "help" "version" "reinstall" "all" "createconfig" "createconfigfull"; do
-    InterfaceText[help]="${InterfaceText[help]} `adjusttolen "${ProgramOptions["$opt"]}" $max_PO` ${ProgramOptions_description["$opt"]}\n"
+for row in "run" "all" "here" "createconfig" "createconfigfull" "reinstall" ; do
+    InterfaceText[help]+="  `adjusttolen "${Commands["$row"]}" $col1len` ${Commands_description["$row"]}\n"
 done
+
+
+col1len=`max "${ProgramOptions[@]}"`
+col1len=$(($col1len + 6))    # 2 chars for shortkey, 1 for comma, 1 for space, 2 for two dashes
+
+InterfaceText[help]+="
+
+options:
+"
+
+for row in "help" "version" ; do
+    programOption_short="${ProgramOptions_short["$row"]}"
+    [ -z programOption_short ] && programOption_short="   " || programOption_short="-${programOption_short},"
+
+    programOption="--${ProgramOptions["$row"]}"
+
+    InterfaceText[help]+="  ${programOption_short} `adjusttolen "${programOption}" $col1len` ${ProgramOptions_description["$row"]}\n"
+done
+
+
 
 
 InterfaceText[version]="${b}$programname v$version${format_end} (${revision})
@@ -1916,10 +2237,102 @@ source: $source
 
 type for usage information:
 $quote_str
-$p ${ProgramOptions[help]}
+$p --${ProgramOptions[help]}
         $unquote_str"
 
-InterfaceText[unknownarg]="$ERROR: unknown arg:"
+InterfaceText[run]="Usage: $p ${Commands[run]} [<image> [<image> [...]]]
+
+  Invokes a terminal and starts a docker container for each specified image.
+  Images are identified by section names in the config file in the current diretory.
+  
+  To run all images that are in the config file, use 'all' command.
+  To create a new config file, use 'create-config' or 'create-config-full' command."
+
+InterfaceText[run_short]="Usage: $p ${Commands[run]} [<image> [<image> [...]]]
+
+see '$p ${Commands[run]} --${ProgramOptions[help]}'"
+
+InterfaceText[run_unknownarg]="$ERROR: unknown arg: %arg%
+${InterfaceText[run_short]}"
+
+InterfaceText[run_noimagerecognized]="$ERROR: none of the specified images are recognized
+${InterfaceText[run_short]}"
+
+InterfaceText[all]="Usage: $p ${Commands[all]}
+  
+  Invokes a terminal and starts a docker container for all images from the config file.
+  Images are identified by section names in the config file in the current diretory.
+  
+  To run a specific set of images, use 'run' command
+  To create a new config file, use 'create-config' or 'create-config-full' command."
+
+InterfaceText[all_short]="Usage: $p ${Commands[all]}
+
+see '$p ${Commands[all]} --${ProgramOptions[help]}'"
+
+InterfaceText[all_unknownarg]="$ERROR: unknown arg: %arg%
+${InterfaceText[all_short]}"
+
+InterfaceText[here]="Usage: $p ${Commands[here]} <image>
+
+  Starts a docker container for a specified image from the config file.
+  Images are identified by section names in the config file in the current diretory.
+  
+  To run images each in new terminals use 'run' and 'all' commands
+  To create a new config file, use 'create-config' or 'create-config-full' command."
+
+InterfaceText[here_short]="Usage: $p ${Commands[here]} <image>
+
+see '$p ${Commands[here]} --${ProgramOptions[help]}'"
+
+InterfaceText[here_unknownarg]="$ERROR: unknown arg: %arg%
+${InterfaceText[here_short]}"
+
+InterfaceText[here_noarg]="$ERROR: missing image
+${InterfaceText[here_short]}"
+
+InterfaceText[createconfig]="Usage: $p ${Commands[createconfig]}
+
+  Creates a new example ready-to-go config file
+
+  You can create a new config file with all available features demonstrated with 'create-config-full'"
+
+InterfaceText[createconfig_unknownarg]="$ERROR: unknown arg: %arg%
+Usage: $p ${Commands[createconfig]}
+
+see '$p ${Commands[createconfig]} --${ProgramOptions[help]}'"
+
+InterfaceText[createconfigfull]="Usage: $p ${Commands[createconfigfull]}
+
+  Creates a new extensive example ready-to-go config file with all available features demonstrated
+
+  You can create a simpler and much shorter working config file with 'create-config'"
+
+InterfaceText[createconfigfull_unknownarg]="$ERROR: unknown arg: %arg%
+Usage: $p ${Commands[createconfigfull]}
+
+see '$p ${Commands[createconfigfull]} --${ProgramOptions[help]}'"
+
+InterfaceText[reinstall]="Usage: $p ${Commands[reinstall]} [-f|--force]
+
+  runs an installation script located at \"${ProgramFiles[installator]}\", which is the same script you have downloaded from the original source, $source
+  
+  when used with '-f' or '--force' key, runs the script without prompts using default answers"
+
+InterfaceText[reinstall_unknownarg]="$ERROR: unknown arg: %arg%
+Usage: $p ${Commands[reinstall]} [-f|--force]
+
+see '$p ${Commands[reinstall]} --${ProgramOptions[help]}'"
+
+InterfaceText[unknownarg]="$ERROR: unknown arg: %arg%
+Usage: $p <COMMAND> [<image> [<image> [...]]]
+  or:  $p [<option>]
+  
+see '$p --${ProgramOptions[help]}'"
+
+
+InterfaceText[noimages]="$ERROR: there are no images in the config file"
+
 
 
 
@@ -1931,104 +2344,290 @@ InterfaceText[unknownarg]="$ERROR: unknown arg:"
 
 
 
-case "$1" in 
-    "" )
-        echo -e "${InterfaceText[version]}"
-        exit_ 0
-        ;;
-    "${ProgramOptions[reinstall]}" )
-        verify_essential_file "${ProgramFiles[installator]}"
-        if [[ "$2" == "-f" ]] || [[ "$2" == "--force" ]]; then
-            "${ProgramFiles[installator]}" --install --force
-            ec=$?
-        else
-            "${ProgramFiles[installator]}" --install
-            ec=$?
-        fi
-        [[ $ec -eq 0 ]] && exit_ 0 || exit_ ${ExitCode[failedtoreinstall]}
-        ;;
-    "${ProgramOptions[here]}")
-        verify_essential_file "${ProgramFiles[ini_interface_ro]}"
-        verify_essential_file "${ProgramFiles[config_get_value_from_section]}"
-        verify_config_file
-        config_read_settings
-        CMD "$2"
-        ;;
-    "${ProgramOptions[herenocheck]}")
-        config_read_settings
-        CMD "$2"
-        ;;
-    "${ProgramOptions[all]}")
-        verify_essential_file "${ProgramFiles[ini_interface_ro]}"
-        verify_essential_file "${ProgramFiles[config_get_value_from_section]}"
-        verify_essential_file "${ProgramFiles[config_get_sections]}"
-        verify_config_file
-        config_read_settings
-        config_read_sections_into_array OSs
+while : ; do
+    
+    #echo "debug: looping \$1 = $1"
 
-        for name in "${!OSs[@]}"; do
-            run_on "${OSs["$name"]}"
-            #sleep 0.3
-        done
-        exit_ 0
-        ;;
-    "${ProgramOptions[printoptions]}")
-        verify_essential_file "${ProgramFiles[ini_interface_ro]}"
-        verify_essential_file "${ProgramFiles[config_get_sections]}"
-        
-        config_read_sections_into_array Sections
-        
-        Options=("${ProgramOptions[@]}" "${Sections[@]}")
-        for opt in "${Options[@]}"; do
-            echo "$opt"
-        done
-        #echo "${Options[@]}"
-        exit_ 0
-        ;;
-    "${ProgramOptions[createconfig]}")
-        verify_essential_file "${ProgramFiles[ini_interface]}"
-        verify_essential_file "${ProgramFiles[config_create]}"
-        config_create
-        [[ $? -eq 0 ]] && exit_ 0 || exit_ ${ExitCode[failedtocreateconfig]}
-        ;;
-    "${ProgramOptions[createconfigfull]}")
-        verify_essential_file "${ProgramFiles[ini_interface]}"
-        verify_essential_file "${ProgramFiles[config_create_full]}"
-        config_create full
-        [[ $? -eq 0 ]] && exit_ 0 || exit_ ${ExitCode[failedtocreateconfig]}
-        ;;
-    "${ProgramOptions[help]}")
-        echo -e "${InterfaceText[help]}"
-        exit_ 0
-        ;;
-    "${ProgramOptions[version]}")
-        echo -e "${InterfaceText[version]}"
-        exit_ 0
-        ;;
-    *)
-        verify_essential_file "${ProgramFiles[ini_interface_ro]}"
-        verify_essential_file "${ProgramFiles[config_get_value_from_section]}"
-        verify_config_file
-        
-        config_read_settings
+    case "$1" in
+        "" )
+            echo -e "${InterfaceText[version]}"
+            exit_ 0
+            ;;
+        "--${ProgramOptions[help]}" | "-${ProgramOptions_short[help]}" )
+            echo -e "${InterfaceText[help]}"
+            exit_ 0
+            break
+            ;;
+        "--${ProgramOptions[version]}" | "-${ProgramOptions_short[version]}" )
+            echo -e "${InterfaceText[version]}"
+            exit_ 0
+            ;;
 
-        config_read_sections_into_array Sections
+        "${Commands[printcommands]}" )
+            for cmd in "${Commands[@]}"; do
+                echo "${cmd}"
+            done
+            exit_ 0
+            ;;
+        "${Commands[printoptions]}" )
+            for opt in "${ProgramOptions[@]}"; do
+                echo "--${opt}"
+            done
+            for opt in "${ProgramOptions_short[@]}"; do
+                echo "-${opt}"
+            done
+            exit_ 0
+            ;;
+        "${Commands[printcommandoptions]}" )
+            for opt in "${CommandOptions[@]}"; do
+                echo "--${opt}"
+            done
+            for opt in "${CommandOptions_short[@]}"; do
+                echo "-${opt}"
+            done
+            exit_ 0
+            ;;
+        "${Commands[printimages]}" )
+            config_read_dependencies
+            config_readSectionsIntoArray Sections "$config_penguinSectionTitle"
+            for img in "${Sections[@]}"; do
+                echo "${img}"
+            done
+            exit_ 0
+            ;;
 
-        for sect in "${Sections[@]}"; do
-            if [[ "$1" == "$sect" ]]; then
-                run_on "$1"
+        "${Commands[run]}" )
+            shift
+            if [[ "$1" == "${Commands[all]}" ]] || [[ "$1" == "${Commands[here]}" ]] || [[ "$1" == "${Commands[herenocheck]}" ]]; then
+                # so that "$p run all" or "$p run here" also works
+                continue;
+            fi
+
+            if [[ "$1" == "--${ProgramOptions[help]}" ]] || [[ "$1" == "-${ProgramOptions_short[help]}" ]] ; then
+                echo -e "${InterfaceText[run]}"
                 exit_ 0
             fi
-        done
 
-        echo -e "${InterfaceText[unknownarg]} $1"
-        exit_ ${ExitCode[unknownarg]}
-        ;;
-    
-    
-esac
+            declare imgs=()
+            while [ -n "$1" ] ; do
+                #containsElement "$1" "${imgs[@]}" || imgs+=( "$1" )
+                imgs+=( "$1" )
+                shift
+            done
+
+            config_read_dependencies
+            verify_dependency docker python terminal
+            verify_essentialFile "${ProgramFiles[ini_interface_ro]}"
+            verify_essentialFile "${ProgramFiles[config_getValueBy_file_section_key]}"
+            verify_configFile
+
+            config_readSettings
+
+            config_readSectionsIntoArray Sections "$config_penguinSectionTitle"
+
+            if [[ -z "${imgs[@]}" ]]; then
+                echo -e "Available images:"
+                
+                for sect in "${Sections[@]}"; do
+                    echo -e "$sect"
+                done
+
+                echo -e ""
+                echo -e "${InterfaceText[run_short]}"
+                exit_ ${ExitCode[noimagesprovided]}
+            fi
+
+            if [[ -z "${Sections[@]}" ]]; then
+                echo -e "${InterfaceText[noimages]}"
+                exit_ ${ExitCode[noimages]}
+            fi
+
+            declare -i count=0
+
+            for img in "${imgs[@]}"; do
+                if containsElement "$img" "${Sections[@]}" ; then
+                    spawnTerminalwPenguin "$img"
+                    count=$(( $count + 1 ))
+                else
+                    echo -e "$WARNING: unknown image: $img"
+                fi
+            done
+
+            if [[ $count == 0 ]] ; then
+                echo -e "${InterfaceText[run_noimagerecognized]}"
+                exit_ ${ExitCode[unknownarg]}
+            fi
+
+            exit_ 0
+            ;;
+
+        "${Commands[all]}" )
+            shift
+
+            if [[ "$1" == "--${ProgramOptions[help]}" ]] || [[ "$1" == "-${ProgramOptions_short[help]}" ]] ; then
+                echo -e "${InterfaceText[all]}"
+                exit_ 0
+            fi
+
+            if [[ -n "$1" ]]; then
+                declare unknownarg="${InterfaceText[all_unknownarg]}"
+                unknownarg="${unknownarg/"%arg%"/$1}"
+                echo -e "${unknownarg}"
+                exit_ ${ExitCode[unknownarg]}
+            fi
+
+            config_read_dependencies
+            verify_dependency docker python terminal
+            verify_essentialFile "${ProgramFiles[ini_interface_ro]}"
+            verify_essentialFile "${ProgramFiles[config_getValueBy_file_section_key]}"
+            verify_essentialFile "${ProgramFiles[config_getSections]}"
+            verify_configFile
+            config_readSettings
+            config_readSectionsIntoArray Sections "$config_penguinSectionTitle"
+
+            if [[ -z "${Sections[@]}" ]]; then
+                echo -e "${InterfaceText[noimages]}"
+                exit_ ${ExitCode[noimages]}
+            fi
+
+            for name in "${!Sections[@]}"; do
+                spawnTerminalwPenguin "${Sections["$name"]}"
+                #sleep 0.3
+            done
+            exit_ 0
+            ;;
+
+        "${Commands[here]}" )
+            shift
+
+            if [[ "$1" == "--${ProgramOptions[help]}" ]] || [[ "$1" == "-${ProgramOptions_short[help]}" ]] ; then
+                echo -e "${InterfaceText[here]}"
+                exit_ 0
+            fi
+
+            if [[ -z "$1" ]]; then
+                echo -e "${InterfaceText[here_noarg]}"
+                exit_ ${ExitCode[noimagesprovided]}
+            fi
+
+            if [[ -n "$2" ]]; then
+                declare unknownarg="${InterfaceText[here_unknownarg]}"
+                unknownarg="${unknownarg/"%arg%"/$1}"
+                echo -e "${unknownarg}"
+                exit_ ${ExitCode[unknownarg]}
+            fi
+
+            declare img="$1"
+
+            config_read_dependencies
+            verify_dependency docker python
+            verify_essentialFile "${ProgramFiles[ini_interface_ro]}"
+            verify_essentialFile "${ProgramFiles[config_getValueBy_file_section_key]}"
+            verify_configFile
+            config_readSettings
+            config_readSectionsIntoArray Sections "$config_penguinSectionTitle"
+
+            if containsElement "$img" "${Sections[@]}"; then
+                runPenguin "$img"
+            else
+                declare unknownarg="${InterfaceText[here_unknownarg]}"
+                unknownarg="${unknownarg/"%arg%"/$img}"
+                echo -e "${unknownarg}"
+                exit_ ${ExitCode[unknownarg]}
+            fi
+            ;;
+
+        "${Commands[herenocheck]}" )
+            config_read_dependencies
+            config_readSettings
+            runPenguin "$2"
+            ;;
+
+        "${Commands[createconfig]}")
+            shift
+
+            if [[ "$1" == "--${ProgramOptions[help]}" ]] || [[ "$1" == "-${ProgramOptions_short[help]}" ]] ; then
+                echo -e "${InterfaceText[createconfig]}"
+                exit_ 0
+            fi
+
+            if [[ -n "$1" ]]; then
+                declare unknownarg="${InterfaceText[createconfig_unknownarg]}"
+                unknownarg="${unknownarg/"%arg%"/$1}"
+                echo -e "${unknownarg}"
+                exit_ ${ExitCode[unknownarg]}
+            fi
+            config_read_dependencies
+            verify_dependency python
+            verify_essentialFile "${ProgramFiles[ini_interface]}"
+            verify_essentialFile "${ProgramFiles[config_create]}"
+            config_create
+            [[ $? -eq 0 ]] && exit_ 0 || exit_ ${ExitCode[failedtocreateconfig]}
+            ;;
+        "${Commands[createconfigfull]}")
+            shift
+
+            if [[ "$1" == "--${ProgramOptions[help]}" ]] || [[ "$1" == "-${ProgramOptions_short[help]}" ]] ; then
+                echo -e "${InterfaceText[createconfigfull]}"
+                exit_ 0
+            fi
+
+            if [[ -n "$1" ]]; then
+                declare unknownarg="${InterfaceText[createconfigfull_unknownarg]}"
+                unknownarg="${unknownarg/"%arg%"/$1}"
+                echo -e "${unknownarg}"
+                exit_ ${ExitCode[unknownarg]}
+            fi
+            config_read_dependencies
+            verify_dependency python
+            verify_essentialFile "${ProgramFiles[ini_interface]}"
+            verify_essentialFile "${ProgramFiles[config_create_full]}"
+            config_create full
+            [[ $? -eq 0 ]] && exit_ 0 || exit_ ${ExitCode[failedtocreateconfig]}
+            ;;
+        
+        "${Commands[reinstall]}" )
+            shift
+
+            if [[ "$1" == "--${ProgramOptions[help]}" ]] || [[ "$1" == "-${ProgramOptions_short[help]}" ]] ; then
+                echo -e "${InterfaceText[reinstall]}"
+                exit_ 0
+            fi
+
+            verify_essentialFile "${ProgramFiles[installator]}"
+            if [[ "$1" == "-f" ]] || [[ "$1" == "--force" ]]; then
+                "${ProgramFiles[installator]}" --install --force
+                ec=$?
+            else
+
+                if [[ -n "$1" ]]; then
+                    declare unknownarg="${InterfaceText[reinstall_unknownarg]}"
+                    unknownarg="${unknownarg/"%arg%"/$1}"
+                    echo -e "${unknownarg}"
+                    exit_ ${ExitCode[unknownarg]}
+                fi
+
+                "${ProgramFiles[installator]}" --install
+                ec=$?
+            fi
+            [[ $ec -eq 0 ]] && exit_ 0 || exit_ ${ExitCode[failedtoreinstall]}
+            ;;
+
+        * )
+            declare unknownarg="${InterfaceText[unknownarg]}"
+            unknownarg="${unknownarg/"%arg%"/$1}"
+            echo -e "${unknownarg}"
+            exit_ ${ExitCode[unknownarg]}
+            break
+            ;;
+    esac
+
+    shift
+
+done
 
 
+exit_ 0
 
 
 

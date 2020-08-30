@@ -51,13 +51,13 @@ VTE Terminal | :x: | :x: | :x: | :x: | :x: | :x: | :x: | :x: | :x:
 Help output:
 
 ```
-Usage: penguinsOnWhale <COMMAND> [<image> [<image> [...]]]
+Usage: penguinsOnWhale <COMMAND> [<penguin> [<penguin> [...]]]
   or:  penguinsOnWhale [<option>]
 
 Commands:
-  run                    invokes a terminal and starts a docker container for each specified image
-  all                    invokes a terminal and starts a docker container for all images in the config file
-  here                   starts a single docker container in the current terminal
+  run                    invokes a terminal and starts a docker container for each specified penguin
+  all                    invokes a terminal and starts a docker container for all penguins in the config file
+  here                   starts a single penguin in the current terminal
   create-config          creates a new example config file in the current directory
   create-config-full     creates a new extensive example config file, demonstrating all available features
   reinstall              runs an installation script located at "/opt/penguinsOnWhale/installator.sh"
@@ -66,6 +66,7 @@ Commands:
 options:
   -h, --help         as a first keyword, displays this message. Run 'penguinsOnWhale <COMMAND> --help' for more info on a command
   -v, --version      displays general info about the program
+
 
 ```
 

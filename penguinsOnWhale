@@ -1361,12 +1361,12 @@ ConfigImage_key[cmd_arg]="cmd_arg"
 declare -A ExitCode=()
 ExitCode[noconf]=1
 ExitCode[noprogramfiles]=2
-ExitCode[noimages]=3
+ExitCode[nopenguins]=3
 ExitCode[cannotresolveimage]=4
 ExitCode[failedtocreateconfig]=5
 ExitCode[failedtoreinstall]=6
 ExitCode[unknownarg]=7
-ExitCode[noimagesprovided]=8
+ExitCode[nopenguinsprovided]=8
 ExitCode[configerror]=9
 ExitCode[nodependencies]=10
 
@@ -1736,13 +1736,13 @@ ProgramOptions_short[version]="v"
 ProgramOptions_description[version]="displays general info about the program"
 
 Commands[run]="run"
-Commands_description[run]="invokes a terminal and starts a docker container for each specified image"
+Commands_description[run]="invokes a terminal and starts a docker container for each specified penguin"
 
 Commands[all]="all"
-Commands_description[all]="invokes a terminal and starts a docker container for all images in the config file"
+Commands_description[all]="invokes a terminal and starts a docker container for all penguins in the config file"
 
 Commands[here]="here"
-Commands_description[here]="starts a single docker container in the current terminal"
+Commands_description[here]="starts a single penguin in the current terminal"
 
 Commands[herenocheck]="here-nocheck"
 Commands_description[herenocheck]=""
@@ -1902,7 +1902,6 @@ config_stripSectionType(){
 config_readSectionsIntoArray(){
     #$1 - name of an Array variable to populate with section names
     #$2 - section type (e.g. "penguin" or "egg")
-    #TODO: parse section name
 
     isArray "$1" || ( hasdelimiters "$1" && return 1 )
 
@@ -2202,7 +2201,7 @@ declare -A InterfaceText=()
 declare -i col1len
 col1len=`max "${Commands[@]}"`
 
-InterfaceText[help]="Usage: $p <COMMAND> [<image> [<image> [...]]]
+InterfaceText[help]="Usage: $p <COMMAND> [<penguin> [<penguin> [...]]]
   or:  $p [<option>]
 
 Commands:
@@ -2240,30 +2239,30 @@ $quote_str
 $p --${ProgramOptions[help]}
         $unquote_str"
 
-InterfaceText[run]="Usage: $p ${Commands[run]} [<image> [<image> [...]]]
+InterfaceText[run]="Usage: $p ${Commands[run]} [<penguin> [<penguin> [...]]]
 
-  Invokes a terminal and starts a docker container for each specified image.
-  Images are identified by section names in the config file in the current diretory.
+  Invokes a terminal and starts a docker container for each specified penguin.
+  Penguins are identified by section names in the config file in the current diretory.
   
-  To run all images that are in the config file, use 'all' command.
+  To run all penguins that are in the config file, use 'all' command.
   To create a new config file, use 'create-config' or 'create-config-full' command."
 
-InterfaceText[run_short]="Usage: $p ${Commands[run]} [<image> [<image> [...]]]
+InterfaceText[run_short]="Usage: $p ${Commands[run]} [<penguin> [<penguin> [...]]]
 
 see '$p ${Commands[run]} --${ProgramOptions[help]}'"
 
 InterfaceText[run_unknownarg]="$ERROR: unknown arg: %arg%
 ${InterfaceText[run_short]}"
 
-InterfaceText[run_noimagerecognized]="$ERROR: none of the specified images are recognized
+InterfaceText[run_nopenguinrecognized]="$ERROR: none of the specified penguins are recognized
 ${InterfaceText[run_short]}"
 
 InterfaceText[all]="Usage: $p ${Commands[all]}
   
-  Invokes a terminal and starts a docker container for all images from the config file.
-  Images are identified by section names in the config file in the current diretory.
+  Invokes a terminal and starts a docker container for all penguins from the config file.
+  Penguinss are identified by section names in the config file in the current diretory.
   
-  To run a specific set of images, use 'run' command
+  To run a specific set of penguins, use 'run' command
   To create a new config file, use 'create-config' or 'create-config-full' command."
 
 InterfaceText[all_short]="Usage: $p ${Commands[all]}
@@ -2273,15 +2272,15 @@ see '$p ${Commands[all]} --${ProgramOptions[help]}'"
 InterfaceText[all_unknownarg]="$ERROR: unknown arg: %arg%
 ${InterfaceText[all_short]}"
 
-InterfaceText[here]="Usage: $p ${Commands[here]} <image>
+InterfaceText[here]="Usage: $p ${Commands[here]} <penguin>
 
-  Starts a docker container for a specified image from the config file.
-  Images are identified by section names in the config file in the current diretory.
+  Starts a docker container for a specified penguin from the config file.
+  Penguinss are identified by section names in the config file in the current diretory.
   
-  To run images each in new terminals use 'run' and 'all' commands
+  To run penguins each in new terminals use 'run' and 'all' commands
   To create a new config file, use 'create-config' or 'create-config-full' command."
 
-InterfaceText[here_short]="Usage: $p ${Commands[here]} <image>
+InterfaceText[here_short]="Usage: $p ${Commands[here]} <penguin>
 
 see '$p ${Commands[here]} --${ProgramOptions[help]}'"
 
@@ -2325,13 +2324,13 @@ Usage: $p ${Commands[reinstall]} [-f|--force]
 see '$p ${Commands[reinstall]} --${ProgramOptions[help]}'"
 
 InterfaceText[unknownarg]="$ERROR: unknown arg: %arg%
-Usage: $p <COMMAND> [<image> [<image> [...]]]
+Usage: $p <COMMAND> [<penguin> [<penguin> [...]]]
   or:  $p [<option>]
   
 see '$p --${ProgramOptions[help]}'"
 
 
-InterfaceText[noimages]="$ERROR: there are no images in the config file"
+InterfaceText[nopenguins]="$ERROR: there are no penguins defined in the config file"
 
 
 
@@ -2434,12 +2433,12 @@ while : ; do
 
                 echo -e ""
                 echo -e "${InterfaceText[run_short]}"
-                exit_ ${ExitCode[noimagesprovided]}
+                exit_ ${ExitCode[nopenguinsprovided]}
             fi
 
             if [[ -z "${Sections[@]}" ]]; then
-                echo -e "${InterfaceText[noimages]}"
-                exit_ ${ExitCode[noimages]}
+                echo -e "${InterfaceText[nopenguins]}"
+                exit_ ${ExitCode[nopenguins]}
             fi
 
             declare -i count=0
@@ -2454,7 +2453,7 @@ while : ; do
             done
 
             if [[ $count == 0 ]] ; then
-                echo -e "${InterfaceText[run_noimagerecognized]}"
+                echo -e "${InterfaceText[run_nopenguinrecognized]}"
                 exit_ ${ExitCode[unknownarg]}
             fi
 
@@ -2486,8 +2485,8 @@ while : ; do
             config_readSectionsIntoArray Sections "$config_penguinSectionTitle"
 
             if [[ -z "${Sections[@]}" ]]; then
-                echo -e "${InterfaceText[noimages]}"
-                exit_ ${ExitCode[noimages]}
+                echo -e "${InterfaceText[nopenguins]}"
+                exit_ ${ExitCode[nopenguins]}
             fi
 
             for name in "${!Sections[@]}"; do
@@ -2507,7 +2506,7 @@ while : ; do
 
             if [[ -z "$1" ]]; then
                 echo -e "${InterfaceText[here_noarg]}"
-                exit_ ${ExitCode[noimagesprovided]}
+                exit_ ${ExitCode[nopenguinsprovided]}
             fi
 
             if [[ -n "$2" ]]; then

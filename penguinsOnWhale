@@ -1725,6 +1725,8 @@ declare -A ProgramOptions_short=()
 declare -A ProgramOptions_description=()
 declare -A Commands=()
 declare -A Commands_description=()
+declare -A CommandOptions=()
+declare -A CommandOptions_short=()
 declare p="`get_programname`"
 
 ProgramOptions[help]="help"

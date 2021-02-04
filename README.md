@@ -1,11 +1,11 @@
 # penguinsOnWhale
 
-Run of multiple Docker containers each in a separate terminal with a single command.
+Run multiple Docker containers each in a separate terminal with a single command.
 
 ![](demo.gif)
 
 
-### Dependencies
+### Requirements/Dependencies
 
  - bash 4 or 5
  - Python >3.6
@@ -34,6 +34,7 @@ Supported | Ubuntu  | Debian | OpenSUSE | Fedora | Linux Mint | CentOS | Arch | 
 aTerm | :x: | :x: | :x: | :x: | :x: | :x: | :x: | :x: | :x:
 Eterm | :x: | :x: | :x: | :x: | :x: | :x: | :x: | :x: | :x:
 **GNOME Terminal** | :heavy_check_mark: | :heavy_check_mark: | :grey_question: | :heavy_check_mark: | :grey_question: | :grey_question: | :grey_question: | :grey_question: | :grey_question: | 
+Hyper | :x: | :x: | :x: | :x: | :x: | :x: | :x: | :x: | :x:
 Guake | :x: | :x: | :x: | :x: | :x: | :x: | :x: | :x: | :x:
 Konsole | :x: | :x: | :x: | :x: | :x: | :x: | :x: | :x: | :x:
 Nautilus Terminal | :x: | :x: | :x: | :x: | :x: | :x: | :x: | :x: | :x:
